@@ -8,6 +8,8 @@
 
 #import "InneractiveBannerCustomEvent.h"
 
+#import "IASDKMopubAdapterConfiguration.h"
+
 #import "MPConstants.h"
 #import "MPLogging.h"
 #import "MPBaseBannerAdapter.h"
@@ -22,6 +24,7 @@
 @property (nonatomic, strong) IAViewUnitController *bannerUnitController;
 @property (nonatomic, strong) IAMRAIDContentController *MRAIDContentController;
 @property (nonatomic, strong) IAVideoContentController *videoContentController;
+@property (nonatomic, strong) NSString *mopubAdUnitID;
 
 @property (nonatomic) BOOL isIABanner;
 
@@ -30,13 +33,13 @@
 @implementation InneractiveBannerCustomEvent {}
 
 /**
- *  @brief Is called each time the MoPub SDK requires a new banner ad.
+ *  @brief Is called each time the MoPub SDK requests a new banner ad.
  *
  *  @discussion Also, when this method is invoked, this class is a new instance, it is not reused,
- * which makes call of this method only once per it's instance timelife.
+ * which makes call of this method only once per it's instance lifetime.
  *
  *  @param size Ad size.
- *  @param info Info dictionary - a JSON object that is defined @MoPub console.
+ *  @param info An Info dictionary is a JSON object that is defined in the MoPub console.
  */
 - (void)requestAdWithSize:(CGSize)size customEventInfo:(NSDictionary *)info {
     _isIABanner =
@@ -64,73 +67,66 @@
     }];
 	
     MPBaseBannerAdapter *baseBannerAdapter = (MPBaseBannerAdapter *)self.delegate;
-    MPAdView *adView = baseBannerAdapter.delegate.banner;
+    MPAdView *mopubAdView = baseBannerAdapter.delegate.banner;
     
+    self.mopubAdUnitID = mopubAdView.adUnitId;
 	IAAdRequest *request = [IAAdRequest build:^(id<IAAdRequestBuilder>  _Nonnull builder) {
 #warning In case of using ATS in order to allow only secure connections, please set to YES 'useSecureConnections' property:
 		builder.useSecureConnections = NO;
         builder.spotID = spotID;
 		builder.timeout = 15;
 		builder.userData = userData;
-        builder.keywords = adView.keywords;
+        builder.keywords = mopubAdView.keywords;
         builder.location = self.delegate.location;
 	}];
 	
-	_videoContentController = [IAVideoContentController build:^(id<IAVideoContentControllerBuilder>  _Nonnull builder) {
+	self.videoContentController = [IAVideoContentController build:^(id<IAVideoContentControllerBuilder>  _Nonnull builder) {
 		builder.videoContentDelegate = self;
 	}];
 
-	_MRAIDContentController = [IAMRAIDContentController build:^(id<IAMRAIDContentControllerBuilder>  _Nonnull builder) {
+	self.MRAIDContentController = [IAMRAIDContentController build:^(id<IAMRAIDContentControllerBuilder>  _Nonnull builder) {
 		builder.MRAIDContentDelegate = self;
 	}];
 
-	_bannerUnitController = [IAViewUnitController build:^(id<IAViewUnitControllerBuilder>  _Nonnull builder) {
+	self.bannerUnitController = [IAViewUnitController build:^(id<IAViewUnitControllerBuilder>  _Nonnull builder) {
 		builder.unitDelegate = self;
 		
 		[builder addSupportedContentController:self.videoContentController];
 		[builder addSupportedContentController:self.MRAIDContentController];
 	}];
 
-	_adSpot = [IAAdSpot build:^(id<IAAdSpotBuilder>  _Nonnull builder) {
+	self.adSpot = [IAAdSpot build:^(id<IAAdSpotBuilder>  _Nonnull builder) {
 		builder.adRequest = request;
 		[builder addSupportedUnitController:self.bannerUnitController];
 		builder.mediationType = [IAMediationMopub new];
 	}];
-	
+	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
+    
 	__weak typeof(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
 
     [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
         if (error) {
-            MPLogError(@"<Inneractive> ad failed with error: %@;", error);
-			[weakSelf.delegate bannerCustomEvent:weakSelf didFailToLoadAdWithError:error];
+            [weakSelf treatError:error.localizedDescription];
         } else {
 			if (adSpot.activeUnitController == weakSelf.bannerUnitController) {
                 if (weakSelf.isIABanner && [adSpot.activeUnitController.activeContentController isKindOfClass:IAVideoContentController.class]) {
-                    [weakSelf treatInternalError];
+                    [weakSelf treatError:@"incompatible banner content"];
                 } else {
 					if (weakSelf.delegate.viewControllerForPresentingModalView.presentedViewController != nil) {
-                        [weakSelf treatInternalError];
-					} else {						
-						weakSelf.bannerUnitController.adView.bounds = CGRectMake(0, 0, size.width, size.height);
-                        MPLogInfo(@"<Inneractive> ad loaded;");
+                        [weakSelf treatError:@"view hierarchy inconsistency"];
+					} else {
+                        [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
+                        [MPLogging logEvent:[MPLogEvent adShowAttemptForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
+                        [MPLogging logEvent:[MPLogEvent adWillAppearForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
+                        weakSelf.bannerUnitController.adView.bounds = CGRectMake(0, 0, size.width, size.height);
 						[weakSelf.delegate bannerCustomEvent:weakSelf didLoadAd:weakSelf.bannerUnitController.adView];
 					}
                 }
 			} else {
-                [weakSelf treatInternalError];
+                [weakSelf treatError:@"mismatched ad object entities"];
 			}
         }
     }];
-}
-
-#pragma mark - Service
-
-- (void)treatInternalError {
-    NSError *internalError = [NSError errorWithDomain:@"internal error" code:0 userInfo:nil];
-    NSString *adFailMessage = [NSString stringWithFormat:@"<Inneractive> ad failed with: %@;", internalError.localizedDescription];
-    
-    MPLogError(@"%@", adFailMessage);
-    [self.delegate bannerCustomEvent:self didFailToLoadAdWithError:internalError];
 }
 
 /**
@@ -162,6 +158,20 @@
     return NO; // we will track it manually;
 }
 
+#pragma mark - Service
+
+- (void)treatError:(NSString * _Nullable)reason {
+    if (!reason.length) {
+        reason = @"internal error";
+    }
+    
+    NSDictionary *userInfo = @{NSLocalizedFailureReasonErrorKey : reason};
+    NSError *error = [NSError errorWithDomain:kIASDKMopubAdapterErrorDomain code:IASDKMopubAdapterErrorInternal userInfo:userInfo];
+    
+    MPLogAdEvent([MPLogEvent adLoadFailedForAdapter:NSStringFromClass(self.class) error:error], self.mopubAdUnitID);
+    [self.delegate bannerCustomEvent:self didFailToLoadAdWithError:error];
+}
+
 #pragma mark - IAViewUnitControllerDelegate
 
 - (UIViewController * _Nonnull)IAParentViewControllerForUnitController:(IAUnitController * _Nullable)unitController {
@@ -169,17 +179,18 @@
 }
 
 - (void)IAAdDidReceiveClick:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad clicked;");
+    MPLogAdEvent([MPLogEvent adTappedForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate trackClick]; // manual track;
 }
 
 - (void)IAAdWillLogImpression:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad impression;");
+    MPLogAdEvent([MPLogEvent adDidAppearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
+    MPLogAdEvent([MPLogEvent adShowSuccessForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate trackImpression]; // manual track;
 }
 
 - (void)IAUnitControllerWillPresentFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad will present fullscreen;");
+    MPLogAdEvent([MPLogEvent adWillPresentModalForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate bannerCustomEventWillBeginAction:self];
 }
 
@@ -192,12 +203,12 @@
 }
 
 - (void)IAUnitControllerDidDismissFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad did dismiss fullscreen;");
+    MPLogAdEvent([MPLogEvent adDidDismissModalForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate bannerCustomEventDidFinishAction:self];
 }
 
 - (void)IAUnitControllerWillOpenExternalApp:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> will open external app;");
+    MPLogAdEvent([MPLogEvent adWillLeaveApplicationForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate bannerCustomEventWillLeaveApplication:self];
 }
 
@@ -213,6 +224,13 @@
 
 - (void)IAMRAIDContentController:(IAMRAIDContentController * _Nullable)contentController MRAIDAdWillExpandToFrame:(CGRect)frame {
     MPLogInfo(@"<Inneractive> MRAID ad will expand;");
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
+    if ([self.delegate respondsToSelector:@selector(bannerCustomEventWillExpandAd:)]) {
+        [self.delegate performSelector:@selector(bannerCustomEventWillExpandAd:) withObject:self];
+    }
+#pragma clang diagnostic pop
 }
 
 - (void)IAMRAIDContentController:(IAMRAIDContentController * _Nullable)contentController MRAIDAdDidExpandToFrame:(CGRect)frame {
@@ -225,6 +243,13 @@
 
 - (void)IAMRAIDContentControllerMRAIDAdDidCollapse:(IAMRAIDContentController * _Nullable)contentController {
     MPLogInfo(@"<Inneractive> MRAID ad did collapse;");
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
+    if ([self.delegate respondsToSelector:@selector(bannerCustomEventDidCollapseAd:)]) {
+        [self.delegate performSelector:@selector(bannerCustomEventDidCollapseAd:) withObject:self];
+    }
+#pragma clang diagnostic pop
 }
 
 #pragma mark - IAVideoContentDelegate
@@ -251,6 +276,8 @@
 #pragma mark - Memory management
 
 - (void)dealloc {
+    MPLogAdEvent([MPLogEvent adWillDisappearForAdapter:NSStringFromClass(self.class)], _mopubAdUnitID);
+    MPLogAdEvent([MPLogEvent adDidDisappearForAdapter:NSStringFromClass(self.class)], _mopubAdUnitID);
     MPLogDebug(@"%@ deallocated", NSStringFromClass(self.class));
 }
 

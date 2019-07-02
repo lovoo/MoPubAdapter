@@ -6,11 +6,19 @@
 //  Copyright (c) 2017 Inneractive. All rights reserved.
 //
 
+#if __has_include(<MoPub/MoPub.h>)
+#import <MoPub/MoPub.h>
+#elif __has_include(<MoPubSDKFramework/MoPub.h>)
+#import <MoPubSDKFramework/MoPub.h>
+#else
 #import "MPBannerCustomEvent.h"
+#endif
 
 /**
  *  @brief Banner Custom Event Class for MoPub SDK.
- *  @discussion Use to implement mediation with Inneractive Banner Ads.
+ *
+ *  @discussion Use in order to implement mediation with Inneractive Banner Ads.
  */
 @interface InneractiveBannerCustomEvent : MPBannerCustomEvent
+
 @end

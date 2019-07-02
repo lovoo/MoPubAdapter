@@ -8,10 +8,12 @@
 
 #import "InneractiveRewardedVideoCustomEvent.h"
 
-#import "IASDKMediationSettings.h"
+#import "IASDKMopubAdapterConfiguration.h"
+#import "IASDKMopubAdapterData.h"
 
 #import "MPLogging.h"
 #import "MPRewardedVideoReward.h"
+#import "MPRewardedVideoAdapter.h"
 
 #import <IASDKCore/IASDKCore.h>
 #import <IASDKVideo/IASDKVideo.h>
@@ -22,6 +24,7 @@
 @property (nonatomic, strong) IAFullscreenUnitController *interstitialUnitController;
 @property (nonatomic, strong) IAVideoContentController *videoContentController;
 @property (nonatomic) BOOL isVideoAvailable;
+@property (nonatomic, strong) NSString *mopubAdUnitID;
 
 /**
  *  @brief The view controller, that presents the Inneractive Interstitial Ad.
@@ -34,27 +37,12 @@
 
 #pragma mark - MPRewardedVideoCustomEvent
 
-- (void)initializeSdkWithParameters:(NSDictionary *)parameters {
-    // this method implementation will check whether IASDK was initialised, and will initialise whether was not;
-    // it is advised, that IASDK will be initialised in the AppDelegate class, before the invocation of this event;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        if (!IASDKCore.sharedInstance.appID) { // means was never initialised before;
-            // Set your AppID here or init the IASDK in the AppDelegate class:
-            NSString *appID = nil;
-            
-            if (appID.length) {
-                [[IASDKCore sharedInstance] initWithAppID:appID];
-            }
-        }
-    });
-}
-
 /**
- *  @brief Called when the MoPub SDK requires a new rewarded video ad.
+ *
+ *  @brief Is called each time the MoPub SDK requests a new rewarded video ad.
  *
  *  @param info A dictionary containing additional custom data associated with a given custom event
- * request. This data is configurable on the MoPub website, and may be used to pass dynamic information, such as publisher IDs.
+ * request. This data is configurable on the MoPub website, and may be used to pass a dynamic information, such as spotID.
  */
 - (void)requestRewardedVideoWithCustomEventInfo:(NSDictionary *)info {
 #warning Set your spotID or define it @MoPub console inside the "extra" JSON:
@@ -77,7 +65,7 @@
          */
     }];
     
-    IASDKMediationSettings *mediationSettings = (IASDKMediationSettings *)[self.delegate instanceMediationSettingsForClass:IASDKMediationSettings.class];
+    IASDKMopubAdapterData *mediationSettings = (IASDKMopubAdapterData *)[self.delegate instanceMediationSettingsForClass:IASDKMopubAdapterData.class];
 	IAAdRequest *request = [IAAdRequest build:^(id<IAAdRequestBuilder>  _Nonnull builder) {
 #warning In case of using ATS, please set to YES 'useSecureConnections' property:
 		builder.useSecureConnections = NO;
@@ -88,36 +76,40 @@
 		builder.location = mediationSettings.location;
 	}];
 	
-	_videoContentController = [IAVideoContentController build:^(id<IAVideoContentControllerBuilder>  _Nonnull builder) {
+    self.videoContentController = [IAVideoContentController build:^(id<IAVideoContentControllerBuilder>  _Nonnull builder) {
 		builder.videoContentDelegate = self;
 	}];
 
-	_interstitialUnitController = [IAFullscreenUnitController build:^(id<IAFullscreenUnitControllerBuilder>  _Nonnull builder) {
+	self.interstitialUnitController = [IAFullscreenUnitController build:^(id<IAFullscreenUnitControllerBuilder>  _Nonnull builder) {
 		builder.unitDelegate = self;
 		
 		[builder addSupportedContentController:self.videoContentController];
 	}];
 
-	_adSpot = [IAAdSpot build:^(id<IAAdSpotBuilder>  _Nonnull builder) {
+	self.adSpot = [IAAdSpot build:^(id<IAAdSpotBuilder>  _Nonnull builder) {
 		builder.adRequest = request;
 		[builder addSupportedUnitController:self.interstitialUnitController];
         builder.mediationType = [IAMediationMopub new];
 	}];
-	
+    
+    MPRewardedVideoAdapter *baseRVAdapter = (MPRewardedVideoAdapter *)self.delegate;
+    id<MPRewardedVideoAdapterDelegate> baseRVAdapterDelegate = baseRVAdapter.delegate;
+    
+    self.mopubAdUnitID = baseRVAdapterDelegate.rewardedVideoAdUnitId;
+    MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
+    
 	__weak typeof(self) weakSelf = self;
 
     [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) { // 'self' should not be used in this block;
         if (error) {
-			MPLogInfo(@"InneractiveAdFailed Error: %@", error);
-			[weakSelf.delegate rewardedVideoDidFailToLoadAdForCustomEvent:weakSelf error:error];
+            [weakSelf treatLoadOrShowError:error.localizedDescription isLoad:YES];
         } else {
 			if (adSpot.activeUnitController == weakSelf.interstitialUnitController) {
                 weakSelf.isVideoAvailable = YES;
-				MPLogInfo(@"<Inneractive> ad loaded;");
+                [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
 				[weakSelf.delegate rewardedVideoDidLoadAdForCustomEvent:weakSelf];
 			} else {
-				MPLogError(@"<Inneractive> ad failed with internal error;");
-				[weakSelf.delegate rewardedVideoDidFailToLoadAdForCustomEvent:weakSelf error:[NSError errorWithDomain:@"internal error" code:0 userInfo:nil]];
+                [weakSelf treatLoadOrShowError:nil isLoad:YES];
 			}
         }
     }];
@@ -128,20 +120,39 @@
 }
 
 - (void)presentRewardedVideoFromViewController:(UIViewController *)viewController {
+    MPLogAdEvent([MPLogEvent adShowAttemptForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
+
     if (!viewController) {
-        MPLogError(@"<Inneractive> error: viewController must not be nil. Will not show the ad.");
+        [self treatLoadOrShowError:@"rootViewController must not be a nil. Will not show the ad." isLoad:NO];
     } else if (!self.isVideoAvailable) {
-        MPLogError(@"<Inneractive> error: requesting video presentation before it is ready.");
+        [self treatLoadOrShowError:@"requesting video presentation before it is ready" isLoad:NO];
     } else {
         self.viewControllerForPresentingModalView = viewController;
         [self.interstitialUnitController showAdAnimated:YES completion:nil];
-        [self.delegate trackImpression]; // manual track;
     }
 }
 
 // new
 - (BOOL)enableAutomaticImpressionAndClickTracking {
     return NO; // we will track it manually;
+}
+
+#pragma mark - Service
+
+- (void)treatLoadOrShowError:(NSString * _Nullable)reason isLoad:(BOOL)isLoad {
+    if (!reason.length) {
+        reason = @"internal error";
+    }
+    
+    NSDictionary *userInfo = @{NSLocalizedFailureReasonErrorKey : reason};
+    NSError *error = [NSError errorWithDomain:kIASDKMopubAdapterErrorDomain code:IASDKMopubAdapterErrorInternal userInfo:userInfo];
+    
+    if (isLoad) {
+        MPLogAdEvent([MPLogEvent adLoadFailedForAdapter:NSStringFromClass(self.class) error:error], self.mopubAdUnitID);
+        [self.delegate rewardedVideoDidFailToLoadAdForCustomEvent:self error:error];
+    } else {
+        MPLogAdEvent([MPLogEvent adShowFailedForAdapter:NSStringFromClass(self.class) error:error], self.mopubAdUnitID);
+    }
 }
 
 #pragma mark - IAViewUnitControllerDelegate
@@ -151,37 +162,38 @@
 }
 
 - (void)IAAdDidReceiveClick:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad clicked;");
+    MPLogAdEvent([MPLogEvent adTappedForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
 	[self.delegate rewardedVideoDidReceiveTapEventForCustomEvent:self];
 	[self.delegate trackClick]; // manual track;
 }
 
 - (void)IAAdWillLogImpression:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad impression;");
+    MPLogAdEvent([MPLogEvent adShowSuccessForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
+    [self.delegate trackImpression]; // manual track;
 }
 
 - (void)IAUnitControllerWillPresentFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad will present fullscreen;");
+    MPLogAdEvent([MPLogEvent adWillAppearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate rewardedVideoWillAppearForCustomEvent:self];
 }
 
 - (void)IAUnitControllerDidPresentFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad did present fullscreen;");
+    MPLogAdEvent([MPLogEvent adDidAppearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate rewardedVideoDidAppearForCustomEvent:self];
 }
 
 - (void)IAUnitControllerWillDismissFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad will dismiss fullscreen;");
+    MPLogAdEvent([MPLogEvent adWillDisappearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate rewardedVideoWillDisappearForCustomEvent:self];
 }
 
 - (void)IAUnitControllerDidDismissFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad did dismiss fullscreen;");
+    MPLogAdEvent([MPLogEvent adDidDisappearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate rewardedVideoDidDisappearForCustomEvent:self];
 }
 
 - (void)IAUnitControllerWillOpenExternalApp:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> will open external app;");
+    MPLogAdEvent([MPLogEvent adWillLeaveApplicationForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate rewardedVideoWillLeaveApplicationForCustomEvent:self];
 }
 

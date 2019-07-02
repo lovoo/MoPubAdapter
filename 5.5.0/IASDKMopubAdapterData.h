@@ -1,5 +1,5 @@
 //
-//  IASDKMediationSettings.h
+//  IASDKMopubAdapterData.h
 //  IASDKClient
 //
 //  Created by Inneractive on 16/12/2017.
@@ -11,13 +11,17 @@
 @class CLLocation;
 
 /**
- *  @brief IASDK Mediation Settings
+ *  @brief IASDK Mopub Adapter Data
+ *
  *  @discussion Use to pass location and keywords to Mopub Rewarded Video Custom Event Class.
  */
-@interface IASDKMediationSettings : NSObject
+@interface IASDKMopubAdapterData : NSObject
+
 @property (nonatomic, strong, nullable) CLLocation *location;
+
 /**
- *  @brief Keywords values separated by comma.
+ *  @brief Key-words separated by comma.
  */
 @property (nonatomic, strong, nullable) NSString *keywords;
+
 @end

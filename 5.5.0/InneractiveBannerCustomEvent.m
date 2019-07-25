@@ -55,6 +55,8 @@
         if (receivedSpotID && [receivedSpotID isKindOfClass:NSString.class] && receivedSpotID.length) {
             spotID = receivedSpotID;
         }
+        
+        [IASDKMopubAdapterConfiguration configureIASDKWithInfo:info];
     }
     
     IAUserData *userData = [IAUserData build:^(id<IAUserDataBuilder>  _Nonnull builder) {
@@ -102,7 +104,7 @@
 	}];
 	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
     
-	__weak typeof(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
+    __weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
 
     [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
         if (error) {

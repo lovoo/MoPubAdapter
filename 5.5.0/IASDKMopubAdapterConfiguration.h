@@ -34,6 +34,8 @@ extern NSString * const kIASDKMopubAdapterErrorDomain;
  */
 @interface IASDKMopubAdapterConfiguration : MPBaseAdapterConfiguration
 
++ (void)configureIASDKWithInfo:(NSDictionary *)info;
+
 @end
 
 NS_ASSUME_NONNULL_END

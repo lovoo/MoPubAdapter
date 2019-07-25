@@ -12,16 +12,26 @@
 
 #import "MPLogging.h"
 
-@interface IASDKMopubAdapterConfiguration ()
-
-@property (nonatomic, strong, nullable) NSString *mostRecentAppID;
-
-@end
-
 @implementation IASDKMopubAdapterConfiguration
+
+#pragma mark - Consts
 
 NSString * const kIASDKMopubAdapterAppIDKey = @"appID";
 NSString * const kIASDKMopubAdapterErrorDomain = @"com.mopub.IASDKAdapter";
+
+#pragma mark - Static members
+
+static dispatch_queue_t sIASDKInitSyncQueue = nil;
+
++ (void)initialize {
+    static BOOL initialised = NO;
+    
+    if ((self == IASDKMopubAdapterConfiguration.self) && !initialised) { // invoke only once per application runtime (and not in subclasses);
+        initialised = YES;
+        
+        sIASDKInitSyncQueue = dispatch_queue_create("com.Inneractive.mediation.mopub.init.syncQueue", DISPATCH_QUEUE_SERIAL);
+    }
+}
 
 #pragma mark - MPAdapterConfiguration
 
@@ -55,10 +65,11 @@ NSString * const kIASDKMopubAdapterErrorDomain = @"com.mopub.IASDKAdapter";
     NSString *appID = configuration[kIASDKMopubAdapterAppIDKey];
     
     if (appID.length) {
-        if (![appID isEqualToString:self.mostRecentAppID]) {
-            self.mostRecentAppID = appID;
-            [IASDKCore.sharedInstance initWithAppID:appID];
-        }
+        dispatch_async(sIASDKInitSyncQueue, ^{
+            if (![appID isEqualToString:IASDKCore.sharedInstance.appID]) {
+                [IASDKCore.sharedInstance initWithAppID:appID];
+            }
+        });
         
         [self.class setCachedInitializationParameters:configuration];
     } else {
@@ -71,4 +82,17 @@ NSString * const kIASDKMopubAdapterErrorDomain = @"com.mopub.IASDKAdapter";
     }
 }
 
+#pragma mark - static API
+
++ (void)configureIASDKWithInfo:(NSDictionary *)info {
+    NSString *receivedAppID = info[kIASDKMopubAdapterAppIDKey];
+    
+    dispatch_async(sIASDKInitSyncQueue, ^{
+        if (receivedAppID && [receivedAppID isKindOfClass:NSString.class] && receivedAppID.length && ![receivedAppID isEqualToString:IASDKCore.sharedInstance.appID]) {
+            [IASDKCore.sharedInstance initWithAppID:receivedAppID];
+        }
+    });
+}
+
 @end
+

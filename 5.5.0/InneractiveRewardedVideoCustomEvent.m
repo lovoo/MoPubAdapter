@@ -25,6 +25,7 @@
 @property (nonatomic, strong) IAVideoContentController *videoContentController;
 @property (nonatomic) BOOL isVideoAvailable;
 @property (nonatomic, strong) NSString *mopubAdUnitID;
+@property (nonatomic) BOOL clickTracked;
 
 /**
  *  @brief The view controller, that presents the Inneractive Interstitial Ad.
@@ -166,7 +167,10 @@
 - (void)IAAdDidReceiveClick:(IAUnitController * _Nullable)unitController {
     MPLogAdEvent([MPLogEvent adTappedForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
 	[self.delegate rewardedVideoDidReceiveTapEventForCustomEvent:self];
-	[self.delegate trackClick]; // manual track;
+    if (!self.clickTracked) {
+        self.clickTracked = YES;
+        [self.delegate trackClick]; // manual track;
+    }
 }
 
 - (void)IAAdWillLogImpression:(IAUnitController * _Nullable)unitController {

@@ -27,6 +27,7 @@
 @property (nonatomic, strong) NSString *mopubAdUnitID;
 
 @property (nonatomic) BOOL isIABanner;
+@property (atomic) BOOL clickTracked;
 
 @end
 
@@ -103,6 +104,7 @@
 		builder.mediationType = [IAMediationMopub new];
 	}];
 	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
+    self.clickTracked = NO;
     
     __weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
 
@@ -110,7 +112,7 @@
         if (error) {
             [weakSelf treatError:error.localizedDescription];
         } else {
-			if (adSpot.activeUnitController == weakSelf.bannerUnitController) {
+            if (adSpot.activeUnitController == weakSelf.bannerUnitController) {
                 if (weakSelf.isIABanner && [adSpot.activeUnitController.activeContentController isKindOfClass:IAVideoContentController.class]) {
                     [weakSelf treatError:@"incompatible banner content"];
                 } else {
@@ -182,7 +184,10 @@
 
 - (void)IAAdDidReceiveClick:(IAUnitController * _Nullable)unitController {
     MPLogAdEvent([MPLogEvent adTappedForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-    [self.delegate trackClick]; // manual track;
+    if (!self.clickTracked) {
+        self.clickTracked = YES;
+        [self.delegate trackClick]; // manual track;
+    }
 }
 
 - (void)IAAdWillLogImpression:(IAUnitController * _Nullable)unitController {

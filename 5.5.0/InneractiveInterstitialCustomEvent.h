@@ -12,6 +12,9 @@
 #import <MoPubSDKFramework/MoPub.h>
 #else
 #import "MPInterstitialCustomEvent.h"
+#import "MPLogging.h"
+#import "MPBaseInterstitialAdapter.h"
+#import "MPInterstitialAdController.h"
 #endif
 
 /**

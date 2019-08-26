@@ -12,9 +12,6 @@
 #import <MoPubSDKFramework/MoPub.h>
 #else
 #import "MPBannerCustomEvent.h"
-#import "MPConstants.h"
-#import "MPLogging.h"
-#import "MPBaseBannerAdapter.h"
 #endif
 
 /**

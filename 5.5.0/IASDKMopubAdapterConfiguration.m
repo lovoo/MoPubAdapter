@@ -10,6 +10,8 @@
 
 #import <IASDKCore/IASDKCore.h>
 
+#import "MPLogging.h"
+
 @implementation IASDKMopubAdapterConfiguration
 
 #pragma mark - Consts

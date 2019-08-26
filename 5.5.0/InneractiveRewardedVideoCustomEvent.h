@@ -12,9 +12,6 @@
 #import <MoPubSDKFramework/MoPub.h>
 #else
 #import "MPRewardedVideoCustomEvent.h"
-#import "MPLogging.h"
-#import "MPRewardedVideoReward.h"
-#import "MPRewardedVideoAdapter.h"
 #endif
 
 /**

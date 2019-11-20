@@ -7,3 +7,4 @@ MoPub adapters are for the purpose of mediating the Fyber Marketplace SDK.
 5.7.0
 5.7.1
 5.8.0
+5.9.0

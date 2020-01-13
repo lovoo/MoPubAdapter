@@ -37,13 +37,23 @@
 @implementation InneractiveInterstitialCustomEvent {}
 
 /**
- *  @brief Is called each time the MoPub SDK requests a new interstitial ad.
+ *  @brief Is called each time the MoPub SDK requests a new interstitial ad. MoPub < 5.10.
  
  *  @discussion The Inneractive interstitial ad will be created in this method.
  *
  *  @param info An Info dictionary is a JSON object that is defined in the MoPub console.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-implementations"
 - (void)requestInterstitialWithCustomEventInfo:(NSDictionary *)info {
+    [self requestInterstitialWithCustomEventInfo:info adMarkup:nil];
+}
+#pragma GCC diagnostic pop
+
+/**
+ *  @brief MoPub 5.10+.
+ */
+- (void)requestInterstitialWithCustomEventInfo:(NSDictionary *)info adMarkup:(NSString *)adMarkup {
 #warning Set your spotID or define it @MoPub console inside the "extra" JSON:
     NSString *spotID = @"";
     

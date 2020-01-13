@@ -7,6 +7,7 @@
 //
 
 #import <Foundation/Foundation.h>
+NS_ASSUME_NONNULL_BEGIN
 
 @class CLLocation;
 
@@ -25,3 +26,4 @@
 @property (nonatomic, strong, nullable) NSString *keywords;
 
 @end
+NS_ASSUME_NONNULL_END

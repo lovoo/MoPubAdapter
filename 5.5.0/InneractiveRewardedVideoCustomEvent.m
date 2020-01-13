@@ -40,12 +40,22 @@
 
 /**
  *
- *  @brief Is called each time the MoPub SDK requests a new rewarded video ad.
+ *  @brief Is called each time the MoPub SDK requests a new rewarded video ad. MoPub < 5.10.
  *
  *  @param info A dictionary containing additional custom data associated with a given custom event
  * request. This data is configurable on the MoPub website, and may be used to pass a dynamic information, such as spotID.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-implementations"
 - (void)requestRewardedVideoWithCustomEventInfo:(NSDictionary *)info {
+    [self requestRewardedVideoWithCustomEventInfo:info adMarkup:nil];
+}
+#pragma GCC diagnostic pop
+
+/**
+ *  @brief MoPub 5.10+.
+ */
+- (void)requestRewardedVideoWithCustomEventInfo:(NSDictionary *)info adMarkup:(NSString *)adMarkup {
 #warning Set your spotID or define it @MoPub console inside the "extra" JSON:
     NSString *spotID = @"";
     

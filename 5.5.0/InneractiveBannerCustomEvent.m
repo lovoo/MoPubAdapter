@@ -34,7 +34,7 @@
 @implementation InneractiveBannerCustomEvent {}
 
 /**
- *  @brief Is called each time the MoPub SDK requests a new banner ad.
+ *  @brief Is called each time the MoPub SDK requests a new banner ad. MoPub < 5.10.
  *
  *  @discussion Also, when this method is invoked, this class is a new instance, it is not reused,
  * which makes call of this method only once per it's instance lifetime.
@@ -42,7 +42,17 @@
  *  @param size Ad size.
  *  @param info An Info dictionary is a JSON object that is defined in the MoPub console.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-implementations"
 - (void)requestAdWithSize:(CGSize)size customEventInfo:(NSDictionary *)info {
+    [self requestAdWithSize:size customEventInfo:info adMarkup:nil];
+}
+#pragma GCC diagnostic pop
+
+/**
+ *  @brief MoPub 5.10+.
+ */
+- (void)requestAdWithSize:(CGSize)size customEventInfo:(NSDictionary *)info adMarkup:(NSString *)adMarkup {
     _isIABanner =
     ((size.width == kIADefaultIPhoneBannerWidth) && (size.height == kIADefaultIPhoneBannerHeight)) ||
     ((size.width == kIADefaultIPadBannerWidth) && (size.height == kIADefaultIPadBannerHeight));
@@ -77,7 +87,7 @@
 #warning In case of using ATS in order to allow only secure connections, please set to YES 'useSecureConnections' property:
 		builder.useSecureConnections = NO;
         builder.spotID = spotID;
-		builder.timeout = 15;
+		builder.timeout = BANNER_TIMEOUT_INTERVAL - 1;
 		builder.userData = userData;
         builder.keywords = mopubAdView.keywords;
         builder.location = self.delegate.location;

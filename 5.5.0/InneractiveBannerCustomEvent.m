@@ -25,6 +25,7 @@
 @property (nonatomic, strong) IAMRAIDContentController *MRAIDContentController;
 @property (nonatomic, strong) IAVideoContentController *videoContentController;
 @property (nonatomic, strong) NSString *mopubAdUnitID;
+@property (nonatomic, strong) MPAdView *moPubAdView;
 
 @property (nonatomic) BOOL isIABanner;
 @property (atomic) BOOL clickTracked;
@@ -213,6 +214,17 @@
 
 - (void)IAUnitControllerDidPresentFullscreen:(IAUnitController * _Nullable)unitController {
     MPLogInfo(@"<Inneractive> ad did present fullscreen;");
+    UIView *view = self.bannerUnitController.adView;
+    
+    while (view.superview) {
+        if ([view.superview isKindOfClass:MPAdView.class]) {
+            self.moPubAdView = (MPAdView *)view.superview;
+            [self.moPubAdView stopAutomaticallyRefreshingContents];
+            break;
+        } else {
+            view = view.superview;
+        }
+    }
 }
 
 - (void)IAUnitControllerWillDismissFullscreen:(IAUnitController * _Nullable)unitController {
@@ -220,6 +232,8 @@
 }
 
 - (void)IAUnitControllerDidDismissFullscreen:(IAUnitController * _Nullable)unitController {
+    [self.moPubAdView startAutomaticallyRefreshingContents];
+    
     MPLogAdEvent([MPLogEvent adDidDismissModalForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate bannerCustomEventDidFinishAction:self];
 }

@@ -136,11 +136,19 @@
 - (void)showInterstitialFromRootViewController:(UIViewController *)rootViewController {
     MPLogAdEvent([MPLogEvent adShowAttemptForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     
-    if (rootViewController) {
-        self.interstitialRootViewController = rootViewController;
-		[self.interstitialUnitController showAdAnimated:YES completion:nil];
+    NSString *errorString = nil;
+    
+    if (!rootViewController) {
+        errorString = @"rootViewController must not be nil;";
+    } else if (self.interstitialUnitController.isPresented) {
+        errorString = @"the interstitial ad is already presented;";
+    }
+    
+    if (errorString) {
+        [self treatLoadOrShowError:errorString isLoad:NO];
     } else {
-        [self treatLoadOrShowError:@"rootViewController must not be a nil. Will not show the ad." isLoad:NO];
+        self.interstitialRootViewController = rootViewController;
+        [self.interstitialUnitController showAdAnimated:YES completion:nil];
     }
 }
 

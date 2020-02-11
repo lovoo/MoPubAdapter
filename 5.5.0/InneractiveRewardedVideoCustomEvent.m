@@ -134,11 +134,19 @@
 
 - (void)presentRewardedVideoFromViewController:(UIViewController *)viewController {
     MPLogAdEvent([MPLogEvent adShowAttemptForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-
+    
+    NSString *errorString = nil;
+    
     if (!viewController) {
-        [self treatLoadOrShowError:@"rootViewController must not be a nil. Will not show the ad." isLoad:NO];
+        errorString = @"viewController must not be nil;";
+    } else if (self.interstitialUnitController.isPresented) {
+        errorString = @"the rewarded ad is already presented;";
     } else if (!self.isVideoAvailable) {
-        [self treatLoadOrShowError:@"requesting video presentation before it is ready" isLoad:NO];
+        errorString = @"requesting video presentation before it is ready;";
+    }
+
+    if (errorString) {
+        [self treatLoadOrShowError:errorString isLoad:NO];
     } else {
         self.viewControllerForPresentingModalView = viewController;
         [self.interstitialUnitController showAdAnimated:YES completion:nil];

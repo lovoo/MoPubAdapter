@@ -100,6 +100,7 @@
 
 	self.MRAIDContentController = [IAMRAIDContentController build:^(id<IAMRAIDContentControllerBuilder>  _Nonnull builder) {
 		builder.MRAIDContentDelegate = self;
+        builder.contentAwareBackground = YES;
 	}];
 
 	self.bannerUnitController = [IAViewUnitController build:^(id<IAViewUnitControllerBuilder>  _Nonnull builder) {

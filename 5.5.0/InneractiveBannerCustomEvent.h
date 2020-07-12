@@ -1,9 +1,9 @@
 //
 //  InneractiveBannerCustomEvent.h
-//  IASDKClient
+//  FyberMarketplaceTestApp
 //
-//  Created by Inneractive 05/04/2017.
-//  Copyright (c) 2017 Inneractive. All rights reserved.
+//  Created by Fyber 05/04/2017.
+//  Copyright (c) 2017 Fyber. All rights reserved.
 //
 
 #if __has_include(<MoPub/MoPub.h>)

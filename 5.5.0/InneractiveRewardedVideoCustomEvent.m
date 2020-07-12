@@ -1,9 +1,9 @@
 //
 //  InneractiveRewardedVideoCustomEvent.m
-//  IASDKClient
+//  FyberMarketplaceTestApp
 //
-//  Created by Inneractive 02/08/2017.
-//  Copyright (c) 2017 Inneractive. All rights reserved.
+//  Created by Fyber 02/08/2017.
+//  Copyright (c) 2017 Fyber. All rights reserved.
 //
 
 #import "InneractiveRewardedVideoCustomEvent.h"
@@ -16,12 +16,14 @@
 #import "MPRewardedVideoAdapter.h"
 
 #import <IASDKCore/IASDKCore.h>
+#import <IASDKMRAID/IASDKMRAID.h>
 #import <IASDKVideo/IASDKVideo.h>
 
-@interface InneractiveRewardedVideoCustomEvent () <IAUnitDelegate, IAVideoContentDelegate>
+@interface InneractiveRewardedVideoCustomEvent () <IAUnitDelegate, IAMRAIDContentDelegate, IAVideoContentDelegate>
 
 @property (nonatomic, strong) IAAdSpot *adSpot;
 @property (nonatomic, strong) IAFullscreenUnitController *interstitialUnitController;
+@property (nonatomic, strong) IAMRAIDContentController *MRAIDContentController;
 @property (nonatomic, strong) IAVideoContentController *videoContentController;
 @property (nonatomic) BOOL isVideoAvailable;
 @property (nonatomic, strong) NSString *mopubAdUnitID;
@@ -68,6 +70,7 @@
         
         [IASDKMopubAdapterConfiguration configureIASDKWithInfo:info];
     }
+    [IASDKMopubAdapterConfiguration collectConsentStatusFromMopub];
     
     IAUserData *userData = [IAUserData build:^(id<IAUserDataBuilder>  _Nonnull builder) {
 #warning Set up targeting in order to increase revenue:
@@ -80,14 +83,16 @@
     
     IASDKMopubAdapterData *mediationSettings = (IASDKMopubAdapterData *)[self.delegate instanceMediationSettingsForClass:IASDKMopubAdapterData.class];
 	IAAdRequest *request = [IAAdRequest build:^(id<IAAdRequestBuilder>  _Nonnull builder) {
-#warning In case of using ATS, please set to YES 'useSecureConnections' property:
-		builder.useSecureConnections = NO;
 		builder.spotID = spotID;
 		builder.timeout = 15;
 		builder.userData = userData;
         builder.keywords = mediationSettings.keywords;
 		builder.location = mediationSettings.location;
 	}];
+    
+    self.MRAIDContentController = [IAMRAIDContentController build:^(id<IAMRAIDContentControllerBuilder>  _Nonnull builder) {
+        builder.MRAIDContentDelegate = self;
+    }];
 	
     self.videoContentController = [IAVideoContentController build:^(id<IAVideoContentControllerBuilder>  _Nonnull builder) {
 		builder.videoContentDelegate = self;
@@ -96,6 +101,7 @@
 	self.interstitialUnitController = [IAFullscreenUnitController build:^(id<IAFullscreenUnitControllerBuilder>  _Nonnull builder) {
 		builder.unitDelegate = self;
 		
+        [builder addSupportedContentController:self.MRAIDContentController];
 		[builder addSupportedContentController:self.videoContentController];
 	}];
 
@@ -111,21 +117,25 @@
     self.mopubAdUnitID = baseRVAdapterDelegate.rewardedVideoAdUnitId;
     MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
     
-	__weak __typeof__(self) weakSelf = self;
-
-    [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) { // 'self' should not be used in this block;
-        if (error) {
-            [weakSelf treatLoadOrShowError:error.localizedDescription isLoad:YES];
-        } else {
-			if (adSpot.activeUnitController == weakSelf.interstitialUnitController) {
-                weakSelf.isVideoAvailable = YES;
-                [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
-				[weakSelf.delegate rewardedVideoDidLoadAdForCustomEvent:weakSelf];
-			} else {
-                [weakSelf treatLoadOrShowError:nil isLoad:YES];
-			}
-        }
-    }];
+    if (IASDKCore.sharedInstance.isInitialised) {
+        __weak __typeof__(self) weakSelf = self;
+        
+        [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) { // 'self' should not be used in this block;
+            if (error) {
+                [weakSelf treatLoadOrShowError:error.localizedDescription isLoad:YES];
+            } else {
+                if (adSpot.activeUnitController == weakSelf.interstitialUnitController) {
+                    weakSelf.isVideoAvailable = YES;
+                    [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
+                    [weakSelf.delegate rewardedVideoDidLoadAdForCustomEvent:weakSelf];
+                } else {
+                    [weakSelf treatLoadOrShowError:nil isLoad:YES];
+                }
+            }
+        }];
+    } else {
+        [self treatLoadOrShowError:@"<Fyber> SDK is not initialised;" isLoad:YES];
+    }
 }
 
 - (BOOL)hasAdAvailable {
@@ -143,6 +153,8 @@
         errorString = @"the rewarded ad is already presented;";
     } else if (!self.isVideoAvailable) {
         errorString = @"requesting video presentation before it is ready;";
+    } else if (!self.interstitialUnitController.isReady) {
+        errorString = @"ad did expire;";
     }
 
     if (errorString) {
@@ -196,6 +208,15 @@
     [self.delegate trackImpression]; // manual track;
 }
 
+// in order to use the rewarded callback for all available rewarded content, you will have to implement this method (not the `IAVideoCompleted:`;
+- (void)IAAdDidReward:(IAUnitController * _Nullable)unitController {
+    #warning Set desired reward or pass it via Mopub console JSON (info object), or via IASDKMediationSettings object and connect it here:
+    MPRewardedVideoReward *reward = [[MPRewardedVideoReward alloc] initWithCurrencyType:kMPRewardedVideoRewardCurrencyTypeUnspecified
+                                                                                 amount:@(kMPRewardedVideoRewardCurrencyAmountUnspecified)];
+    
+    [self.delegate rewardedVideoShouldRewardUserForCustomEvent:self reward:reward];
+}
+
 - (void)IAUnitControllerWillPresentFullscreen:(IAUnitController * _Nullable)unitController {
     MPLogAdEvent([MPLogEvent adWillAppearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
     [self.delegate rewardedVideoWillAppearForCustomEvent:self];
@@ -221,24 +242,27 @@
     [self.delegate rewardedVideoWillLeaveApplicationForCustomEvent:self];
 }
 
+- (void)IAAdDidExpire:(IAUnitController * _Nullable)unitController {
+    MPLogInfo(@"<Fyber> IAAdDidExpire");
+}
+
+#pragma mark - IAMRAIDContentDelegate
+
+// MRAID protocol related methods are not relevant in case of interstitial;
+
 #pragma mark - IAVideoContentDelegate
 
 - (void)IAVideoCompleted:(IAVideoContentController * _Nullable)contentController {
-    MPLogInfo(@"<Inneractive> video completed;");
-#warning Set desired reward or pass it via Mopub console JSON (info object), or via IASDKMediationSettings object and connect it here:
-    MPRewardedVideoReward *reward = [[MPRewardedVideoReward alloc] initWithCurrencyType:kMPRewardedVideoRewardCurrencyTypeUnspecified
-                                                                                 amount:@(kMPRewardedVideoRewardCurrencyAmountUnspecified)];
-    
-    [self.delegate rewardedVideoShouldRewardUserForCustomEvent:self reward:reward];
+    MPLogInfo(@"<Fyber> video completed;");
 }
 
 - (void)IAVideoContentController:(IAVideoContentController * _Nullable)contentController videoInterruptedWithError:(NSError *)error {
-    MPLogInfo(@"<Inneractive> video error: %@;", error.localizedDescription);
+    MPLogInfo(@"<Fyber> video error: %@;", error.localizedDescription);
     [self.delegate rewardedVideoDidFailToPlayForCustomEvent:self error:error];
 }
 
 - (void)IAVideoContentController:(IAVideoContentController * _Nullable)contentController videoDurationUpdated:(NSTimeInterval)videoDuration {
-    MPLogInfo(@"<Inneractive> video duration updated: %.02lf", videoDuration);
+    MPLogInfo(@"<Fyber> video duration updated: %.02lf", videoDuration);
 }
 
 // Implement if needed:

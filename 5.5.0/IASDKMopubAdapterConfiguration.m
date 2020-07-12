@@ -1,9 +1,9 @@
 //
 //  IASDKMopubAdapterConfiguration.m
-//  IASDKClient
+//  FyberMarketplaceTestApp
 //
-//  Created by Inneractive on 2/25/19.
-//  Copyright © 2019 Inneractive. All rights reserved.
+//  Created by Fyber on 2/25/19.
+//  Copyright © 2019 Fyber. All rights reserved.
 //
 
 #import "IASDKMopubAdapterConfiguration.h"
@@ -11,6 +11,7 @@
 #import <IASDKCore/IASDKCore.h>
 
 #import "MPLogging.h"
+#import "MoPub.h"
 
 @implementation IASDKMopubAdapterConfiguration
 
@@ -18,6 +19,7 @@
 
 NSString * const kIASDKMopubAdapterAppIDKey = @"appID";
 NSString * const kIASDKMopubAdapterErrorDomain = @"com.mopub.IASDKAdapter";
+NSString * const kIASDKShouldUseMopubGDPRConsentKey = @"IASDKShouldUseMopubGDPRConsentKey";
 
 #pragma mark - Static members
 
@@ -29,7 +31,7 @@ static dispatch_queue_t sIASDKInitSyncQueue = nil;
     if ((self == IASDKMopubAdapterConfiguration.self) && !initialised) { // invoke only once per application runtime (and not in subclasses);
         initialised = YES;
         
-        sIASDKInitSyncQueue = dispatch_queue_create("com.Inneractive.mediation.mopub.init.syncQueue", DISPATCH_QUEUE_SERIAL);
+        sIASDKInitSyncQueue = dispatch_queue_create("com.Fyber.SDK.Marketplace.mediation.mopub.init", DISPATCH_QUEUE_SERIAL);
     }
 }
 
@@ -61,24 +63,37 @@ static dispatch_queue_t sIASDKInitSyncQueue = nil;
 
 // new
 - (void)initializeNetworkWithConfiguration:(NSDictionary<NSString *, id> *)configuration complete:(void(^)(NSError *))complete {
-    NSError *errorIfHas = nil;
     NSString *appID = configuration[kIASDKMopubAdapterAppIDKey];
     
-    if (appID.length) {
-        dispatch_async(sIASDKInitSyncQueue, ^{
-            if (![appID isEqualToString:IASDKCore.sharedInstance.appID]) {
-                [IASDKCore.sharedInstance initWithAppID:appID];
-            }
-        });
-        
-        [self.class setCachedInitializationParameters:configuration];
+    if ([appID isEqualToString:IASDKCore.sharedInstance.appID]) { // already initialised;
+        if (complete) {
+            complete(nil);
+        }
     } else {
-        errorIfHas = [NSError errorWithDomain:kIASDKMopubAdapterErrorDomain code:IASDKMopubAdapterErrorMissingAppID userInfo:@{NSLocalizedDescriptionKey:@"The VAMP SDK mandatory param appID is missing"}];
-        MPLogEvent([MPLogEvent error:errorIfHas message:nil]);
-    }
-    
-    if (complete) {
-        complete(errorIfHas);
+        dispatch_async(sIASDKInitSyncQueue, ^{
+            [IASDKCore.sharedInstance initWithAppID:appID completionBlock:^(BOOL success, NSError * _Nullable error) {
+                if (success || (error.code == IASDKCoreInitErrorTypeFailedToDownloadMandatoryData)) {
+                    error = nil;
+                }
+                
+                if (complete) {
+                    complete(error);
+                }
+                
+                if (error) {
+                    NSInteger errorCode = IASDKMopubAdapterErrorSDKInit;
+                    
+                    if (!appID.length) {
+                        errorCode = IASDKMopubAdapterErrorMissingAppID;
+                    }
+                    
+                    error = [NSError errorWithDomain:kIASDKMopubAdapterErrorDomain code:errorCode userInfo:error.userInfo];
+                    MPLogEvent([MPLogEvent error:error message:error.description ?: @""]);
+                } else {
+                    [self.class setCachedInitializationParameters:configuration];
+                }
+            } completionQueue:nil];
+        });
     }
 }
 
@@ -92,6 +107,30 @@ static dispatch_queue_t sIASDKInitSyncQueue = nil;
             [IASDKCore.sharedInstance initWithAppID:receivedAppID];
         }
     });
+}
+
++ (void)collectConsentStatusFromMopub {
+    BOOL shouldUseMopubGDPRConsent =
+    [NSUserDefaults.standardUserDefaults boolForKey:kIASDKShouldUseMopubGDPRConsentKey] ||
+    (IASDKCore.sharedInstance.GDPRConsent == IAGDPRConsentTypeUnknown);
+    
+    if (shouldUseMopubGDPRConsent && (MoPub.sharedInstance.isGDPRApplicable == MPBoolYes)) {
+        if (MoPub.sharedInstance.allowLegitimateInterest) {
+            if ((MoPub.sharedInstance.currentConsentStatus == MPConsentStatusDenied) ||
+                (MoPub.sharedInstance.currentConsentStatus == MPConsentStatusDoNotTrack) ||
+                (MoPub.sharedInstance.currentConsentStatus == MPConsentStatusPotentialWhitelist)) {
+                IASDKCore.sharedInstance.GDPRConsent = IAGDPRConsentTypeDenied;
+            } else {
+                IASDKCore.sharedInstance.GDPRConsent = IAGDPRConsentTypeGiven;
+            }
+        } else {
+            const BOOL canCollectPersonalInfo = MoPub.sharedInstance.canCollectPersonalInfo;
+            
+            IASDKCore.sharedInstance.GDPRConsent = (canCollectPersonalInfo) ? IAGDPRConsentTypeGiven : IAGDPRConsentTypeDenied;
+        }
+        
+        [NSUserDefaults.standardUserDefaults setBool:YES forKey:kIASDKShouldUseMopubGDPRConsentKey];
+    }
 }
 
 @end

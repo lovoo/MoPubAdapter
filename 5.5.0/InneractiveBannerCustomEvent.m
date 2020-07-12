@@ -1,29 +1,28 @@
 //
 //  InneractiveBannerCustomEvent.m
-//  IASDKClient
+//  FyberMarketplaceTestApp
 //
-//  Created by Inneractive 05/04/2017.
-//  Copyright (c) 2017 Inneractive. All rights reserved.
+//  Created by Fyber 05/04/2017.
+//  Copyright (c) 2017 Fyber. All rights reserved.
 //
 
 #import "InneractiveBannerCustomEvent.h"
 
 #import "IASDKMopubAdapterConfiguration.h"
 
+#import "MoPub.h"
 #import "MPConstants.h"
 #import "MPLogging.h"
 #import "MPBaseBannerAdapter.h"
 
 #import <IASDKCore/IASDKCore.h>
-#import <IASDKVideo/IASDKVideo.h>
 #import <IASDKMRAID/IASDKMRAID.h>
 
-@interface InneractiveBannerCustomEvent () <IAUnitDelegate, IAVideoContentDelegate, IAMRAIDContentDelegate>
+@interface InneractiveBannerCustomEvent () <IAUnitDelegate, IAMRAIDContentDelegate>
 
 @property (nonatomic, strong) IAAdSpot *adSpot;
 @property (nonatomic, strong) IAViewUnitController *bannerUnitController;
 @property (nonatomic, strong) IAMRAIDContentController *MRAIDContentController;
-@property (nonatomic, strong) IAVideoContentController *videoContentController;
 @property (nonatomic, strong) NSString *mopubAdUnitID;
 @property (nonatomic, strong) MPAdView *moPubAdView;
 
@@ -70,6 +69,7 @@
         
         [IASDKMopubAdapterConfiguration configureIASDKWithInfo:info];
     }
+    [IASDKMopubAdapterConfiguration collectConsentStatusFromMopub];
     
     IAUserData *userData = [IAUserData build:^(id<IAUserDataBuilder>  _Nonnull builder) {
 #warning Set up targeting in order to increase revenue:
@@ -85,18 +85,15 @@
     
     self.mopubAdUnitID = mopubAdView.adUnitId;
 	IAAdRequest *request = [IAAdRequest build:^(id<IAAdRequestBuilder>  _Nonnull builder) {
-#warning In case of using ATS in order to allow only secure connections, please set to YES 'useSecureConnections' property:
-		builder.useSecureConnections = NO;
         builder.spotID = spotID;
 		builder.timeout = BANNER_TIMEOUT_INTERVAL - 1;
 		builder.userData = userData;
         builder.keywords = mopubAdView.keywords;
-        builder.location = self.delegate.location;
 	}];
-	
-	self.videoContentController = [IAVideoContentController build:^(id<IAVideoContentControllerBuilder>  _Nonnull builder) {
-		builder.videoContentDelegate = self;
-	}];
+    // the `location` property of the `MPBannerCustomEventDelegate` is deprecated starting from the `MoPub 5.12.0
+    if ([self.delegate respondsToSelector:@selector(location)]) {
+        request.location = [self.delegate performSelector:@selector(location)];
+    }
 
 	self.MRAIDContentController = [IAMRAIDContentController build:^(id<IAMRAIDContentControllerBuilder>  _Nonnull builder) {
 		builder.MRAIDContentDelegate = self;
@@ -105,8 +102,6 @@
 
 	self.bannerUnitController = [IAViewUnitController build:^(id<IAViewUnitControllerBuilder>  _Nonnull builder) {
 		builder.unitDelegate = self;
-		
-		[builder addSupportedContentController:self.videoContentController];
 		[builder addSupportedContentController:self.MRAIDContentController];
 	}];
 
@@ -118,31 +113,31 @@
 	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
     self.clickTracked = NO;
     
-    __weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
+    if (IASDKCore.sharedInstance.isInitialised) {
+        __weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
 
-    [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
-        if (error) {
-            [weakSelf treatError:error.localizedDescription];
-        } else {
-            if (adSpot.activeUnitController == weakSelf.bannerUnitController) {
-                if (weakSelf.isIABanner && [adSpot.activeUnitController.activeContentController isKindOfClass:IAVideoContentController.class]) {
-                    [weakSelf treatError:@"incompatible banner content"];
-                } else {
-					if (weakSelf.delegate.viewControllerForPresentingModalView.presentedViewController != nil) {
+        [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
+            if (error) {
+                [weakSelf treatError:error.localizedDescription];
+            } else {
+                if (adSpot.activeUnitController == weakSelf.bannerUnitController) {
+                    if (weakSelf.delegate.viewControllerForPresentingModalView.presentedViewController != nil) {
                         [weakSelf treatError:@"view hierarchy inconsistency"];
-					} else {
+                    } else {
                         [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
                         [MPLogging logEvent:[MPLogEvent adShowAttemptForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
                         [MPLogging logEvent:[MPLogEvent adWillAppearForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
                         weakSelf.bannerUnitController.adView.bounds = CGRectMake(0, 0, size.width, size.height);
-						[weakSelf.delegate bannerCustomEvent:weakSelf didLoadAd:weakSelf.bannerUnitController.adView];
-					}
+                        [weakSelf.delegate bannerCustomEvent:weakSelf didLoadAd:weakSelf.bannerUnitController.adView];
+                    }
+                } else {
+                    [weakSelf treatError:@"mismatched ad object entities"];
                 }
-			} else {
-                [weakSelf treatError:@"mismatched ad object entities"];
-			}
-        }
-    }];
+            }
+        }];
+    } else {
+        [self treatError:@"<Fyber> SDK is not initialised;"];
+    }
 }
 
 /**
@@ -214,7 +209,7 @@
 }
 
 - (void)IAUnitControllerDidPresentFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad did present fullscreen;");
+    MPLogInfo(@"<Fyber> ad did present fullscreen;");
     UIView *view = self.bannerUnitController.adView;
     
     while (view.superview) {
@@ -229,7 +224,7 @@
 }
 
 - (void)IAUnitControllerWillDismissFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogInfo(@"<Inneractive> ad will dismiss fullscreen;");
+    MPLogInfo(@"<Fyber> ad will dismiss fullscreen;");
 }
 
 - (void)IAUnitControllerDidDismissFullscreen:(IAUnitController * _Nullable)unitController {
@@ -247,15 +242,15 @@
 #pragma mark - IAMRAIDContentDelegate
 
 - (void)IAMRAIDContentController:(IAMRAIDContentController * _Nullable)contentController MRAIDAdWillResizeToFrame:(CGRect)frame {
-    MPLogInfo(@"<Inneractive> MRAID ad will resize;");
+    MPLogInfo(@"<Fyber> MRAID ad will resize;");
 }
 
 - (void)IAMRAIDContentController:(IAMRAIDContentController * _Nullable)contentController MRAIDAdDidResizeToFrame:(CGRect)frame {
-    MPLogInfo(@"<Inneractive> MRAID ad did resize;");
+    MPLogInfo(@"<Fyber> MRAID ad did resize;");
 }
 
 - (void)IAMRAIDContentController:(IAMRAIDContentController * _Nullable)contentController MRAIDAdWillExpandToFrame:(CGRect)frame {
-    MPLogInfo(@"<Inneractive> MRAID ad will expand;");
+    MPLogInfo(@"<Fyber> MRAID ad will expand;");
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundeclared-selector"
@@ -266,15 +261,15 @@
 }
 
 - (void)IAMRAIDContentController:(IAMRAIDContentController * _Nullable)contentController MRAIDAdDidExpandToFrame:(CGRect)frame {
-    MPLogInfo(@"<Inneractive> MRAID ad did expand;");
+    MPLogInfo(@"<Fyber> MRAID ad did expand;");
 }
 
 - (void)IAMRAIDContentControllerMRAIDAdWillCollapse:(IAMRAIDContentController * _Nullable)contentController {
-    MPLogInfo(@"<Inneractive> MRAID ad will collapse;");
+    MPLogInfo(@"<Fyber> MRAID ad will collapse;");
 }
 
 - (void)IAMRAIDContentControllerMRAIDAdDidCollapse:(IAMRAIDContentController * _Nullable)contentController {
-    MPLogInfo(@"<Inneractive> MRAID ad did collapse;");
+    MPLogInfo(@"<Fyber> MRAID ad did collapse;");
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundeclared-selector"
@@ -283,27 +278,6 @@
     }
 #pragma clang diagnostic pop
 }
-
-#pragma mark - IAVideoContentDelegate
-
-- (void)IAVideoCompleted:(IAVideoContentController * _Nullable)contentController {
-    MPLogInfo(@"<Inneractive> video completed;");
-}
-
-- (void)IAVideoContentController:(IAVideoContentController * _Nullable)contentController videoInterruptedWithError:(NSError *)error {
-    MPLogInfo(@"<Inneractive> video error: %@;", error.localizedDescription);
-}
-
-- (void)IAVideoContentController:(IAVideoContentController * _Nullable)contentController videoDurationUpdated:(NSTimeInterval)videoDuration {
-    MPLogInfo(@"<Inneractive> video duration updated: %.02lf", videoDuration);
-}
-
-// Implement if needed:
-/*
-- (void)IAVideoContentController:(IAVideoContentController * _Nullable)contentController videoProgressUpdatedWithCurrentTime:(NSTimeInterval)currentTime totalTime:(NSTimeInterval)totalTime {
-    
-}
- */
 
 #pragma mark - Memory management
 

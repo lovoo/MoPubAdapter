@@ -1,9 +1,9 @@
 //
 //  InneractiveRewardedVideoCustomEvent.h
-//  IASDKClient
+//  FyberMarketplaceTestApp
 //
-//  Created by Inneractive 02/08/2017.
-//  Copyright (c) 2017 Inneractive. All rights reserved.
+//  Created by Fyber 02/08/2017.
+//  Copyright (c) 2017 Fyber. All rights reserved.
 //
 
 #if __has_include(<MoPub/MoPub.h>)
@@ -22,3 +22,5 @@
 @interface InneractiveRewardedVideoCustomEvent : MPRewardedVideoCustomEvent
 
 @end
+#warning The InneractiveRewardedVideoCustomEvent class will be renamed to the InneractiveRewardedCustomEvent in the 7.6.1 version.
+typedef InneractiveRewardedVideoCustomEvent InneractiveRewardedCustomEvent;

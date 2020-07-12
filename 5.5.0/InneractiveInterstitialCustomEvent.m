@@ -1,9 +1,9 @@
 //
 //  InneractiveInterstitialCustomEvent.m
-//  IASDKClient
+//  FyberMarketplaceTestApp
 //
-//  Created by Inneractive 10/04/2017.
-//  Copyright (c) 2017 Inneractive. All rights reserved.
+//  Created by Fyber 10/04/2017.
+//  Copyright (c) 2017 Fyber. All rights reserved.
 //
 
 #import "InneractiveInterstitialCustomEvent.h"
@@ -66,6 +66,7 @@
         
         [IASDKMopubAdapterConfiguration configureIASDKWithInfo:info];
     }
+    [IASDKMopubAdapterConfiguration collectConsentStatusFromMopub];
     
     IAUserData *userData = [IAUserData build:^(id<IAUserDataBuilder>  _Nonnull builder) {
 #warning Set up targeting in order to increase revenue:
@@ -81,14 +82,15 @@
     
     self.mopubAdUnitID = interstitialAdController.adUnitId;
 	IAAdRequest *request = [IAAdRequest build:^(id<IAAdRequestBuilder>  _Nonnull builder) {
-#warning In case of using ATS, please set to YES 'useSecureConnections' property:
-		builder.useSecureConnections = NO;
 		builder.spotID = spotID;
 		builder.timeout = 15;
         builder.userData = userData;
 		builder.keywords = interstitialAdController.keywords;
-		builder.location = self.delegate.location;
 	}];
+    // the `location` property of the `MPInterstitialAdController` is deprecated starting from the `MoPub 5.12.0
+    if ([self.delegate respondsToSelector:@selector(location)]) {
+        request.location = [self.delegate performSelector:@selector(location)];
+    }
 
 	self.videoContentController = [IAVideoContentController build:^(id<IAVideoContentControllerBuilder>  _Nonnull builder) {
 		builder.videoContentDelegate = self;
@@ -112,20 +114,24 @@
 	}];
 	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
     
-	__weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
-	
-	[self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
-		if (error) {
-            [weakSelf treatLoadOrShowError:error.localizedDescription isLoad:YES];
-		} else {
-			if (adSpot.activeUnitController == weakSelf.interstitialUnitController) {
-                [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
-				[weakSelf.delegate interstitialCustomEvent:weakSelf didLoadAd:adModel];
-			} else {
-                [weakSelf treatLoadOrShowError:nil isLoad:YES];
-			}
-		}
-	}];
+    if (IASDKCore.sharedInstance.isInitialised) {
+        __weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
+        
+        [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
+            if (error) {
+                [weakSelf treatLoadOrShowError:error.localizedDescription isLoad:YES];
+            } else {
+                if (adSpot.activeUnitController == weakSelf.interstitialUnitController) {
+                    [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
+                    [weakSelf.delegate interstitialCustomEvent:weakSelf didLoadAd:adModel];
+                } else {
+                    [weakSelf treatLoadOrShowError:nil isLoad:YES];
+                }
+            }
+        }];
+    } else {
+        [self treatLoadOrShowError:@"<Fyber> SDK is not initialised;" isLoad:YES];
+    }
 }
 
 /**
@@ -142,6 +148,8 @@
         errorString = @"rootViewController must not be nil;";
     } else if (self.interstitialUnitController.isPresented) {
         errorString = @"the interstitial ad is already presented;";
+    } else if (!self.interstitialUnitController.isReady) {
+        errorString = @"ad did expire;";
     }
     
     if (errorString) {
@@ -220,6 +228,10 @@
 	[self.delegate interstitialCustomEventWillLeaveApplication:self];
 }
 
+- (void)IAAdDidExpire:(IAUnitController * _Nullable)unitController {
+    MPLogInfo(@"<Fyber> IAAdDidExpire");
+}
+
 #pragma mark - IAMRAIDContentDelegate
 
 // MRAID protocol related methods are not relevant in case of interstitial;
@@ -227,15 +239,15 @@
 #pragma mark - IAVideoContentDelegate
 
 - (void)IAVideoCompleted:(IAVideoContentController * _Nullable)contentController {
-    MPLogInfo(@"<Inneractive> video completed;");
+    MPLogInfo(@"<Fyber> video completed;");
 }
 
 - (void)IAVideoContentController:(IAVideoContentController * _Nullable)contentController videoInterruptedWithError:(NSError *)error {
-    MPLogInfo(@"<Inneractive> video error: %@;", error.localizedDescription);
+    MPLogInfo(@"<Fyber> video error: %@;", error.localizedDescription);
 }
 
 - (void)IAVideoContentController:(IAVideoContentController * _Nullable)contentController videoDurationUpdated:(NSTimeInterval)videoDuration {
-    MPLogInfo(@"<Inneractive> video duration updated: %.02lf", videoDuration);
+    MPLogInfo(@"<Fyber> video duration updated: %.02lf", videoDuration);
 }
 
 // Implement if needed:

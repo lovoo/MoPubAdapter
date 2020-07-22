@@ -11,7 +11,6 @@
 #import "IASDKMopubAdapterConfiguration.h"
 
 #import "MPLogging.h"
-#import "MPBaseInterstitialAdapter.h"
 #import "MPInterstitialAdController.h"
 
 #import <IASDKCore/IASDKCore.h>
@@ -24,7 +23,7 @@
 @property (nonatomic, strong) IAFullscreenUnitController *interstitialUnitController;
 @property (nonatomic, strong) IAMRAIDContentController *MRAIDContentController;
 @property (nonatomic, strong) IAVideoContentController *videoContentController;
-@property (nonatomic, strong) NSString *mopubAdUnitID;
+@property (nonatomic, strong) NSString *spotID;
 @property (nonatomic) BOOL clickTracked;
 
 /**
@@ -36,24 +35,20 @@
 
 @implementation InneractiveInterstitialCustomEvent {}
 
+@dynamic delegate;
+@dynamic hasAdAvailable;
+@dynamic localExtras;
+
+#pragma mark -
+
 /**
- *  @brief Is called each time the MoPub SDK requests a new interstitial ad. MoPub < 5.10.
+ *  @brief Is called each time the MoPub SDK requests a new interstitial ad. MoPub >= 5.13.
  
  *  @discussion The Inneractive interstitial ad will be created in this method.
  *
  *  @param info An Info dictionary is a JSON object that is defined in the MoPub console.
  */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-implementations"
-- (void)requestInterstitialWithCustomEventInfo:(NSDictionary *)info {
-    [self requestInterstitialWithCustomEventInfo:info adMarkup:nil];
-}
-#pragma GCC diagnostic pop
-
-/**
- *  @brief MoPub 5.10+.
- */
-- (void)requestInterstitialWithCustomEventInfo:(NSDictionary *)info adMarkup:(NSString *)adMarkup {
+- (void)requestAdWithAdapterInfo:(NSDictionary *)info adMarkup:(NSString *)adMarkup {
 #warning Set your spotID or define it @MoPub console inside the "extra" JSON:
     NSString *spotID = @"";
     
@@ -77,20 +72,13 @@
          */
     }];
     
-    MPBaseInterstitialAdapter *baseInterstitialAdapter = (MPBaseInterstitialAdapter *)self.delegate;
-    MPInterstitialAdController *interstitialAdController = baseInterstitialAdapter.delegate.interstitialAdController;
-    
-    self.mopubAdUnitID = interstitialAdController.adUnitId;
+    self.spotID = spotID;
 	IAAdRequest *request = [IAAdRequest build:^(id<IAAdRequestBuilder>  _Nonnull builder) {
 		builder.spotID = spotID;
 		builder.timeout = 15;
         builder.userData = userData;
-		builder.keywords = interstitialAdController.keywords;
+        builder.keywords = self.localExtras[@"keywords"];
 	}];
-    // the `location` property of the `MPInterstitialAdController` is deprecated starting from the `MoPub 5.12.0
-    if ([self.delegate respondsToSelector:@selector(location)]) {
-        request.location = [self.delegate performSelector:@selector(location)];
-    }
 
 	self.videoContentController = [IAVideoContentController build:^(id<IAVideoContentControllerBuilder>  _Nonnull builder) {
 		builder.videoContentDelegate = self;
@@ -112,7 +100,7 @@
 		[builder addSupportedUnitController:self.interstitialUnitController];
 		builder.mediationType = [IAMediationMopub new];
 	}];
-	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
+	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.spotID);
     
     if (IASDKCore.sharedInstance.isInitialised) {
         __weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
@@ -122,8 +110,8 @@
                 [weakSelf treatLoadOrShowError:error.localizedDescription isLoad:YES];
             } else {
                 if (adSpot.activeUnitController == weakSelf.interstitialUnitController) {
-                    [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
-                    [weakSelf.delegate interstitialCustomEvent:weakSelf didLoadAd:adModel];
+                    [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.spotID fromClass:weakSelf.class];
+                    [weakSelf.delegate fullscreenAdAdapterDidLoadAd:weakSelf];
                 } else {
                     [weakSelf treatLoadOrShowError:nil isLoad:YES];
                 }
@@ -139,8 +127,8 @@
  *
  *  @param rootViewController The view controller, that will present Inneractive interstitial ad.
  */
-- (void)showInterstitialFromRootViewController:(UIViewController *)rootViewController {
-    MPLogAdEvent([MPLogEvent adShowAttemptForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
+- (void)presentAdFromViewController:(UIViewController *)rootViewController {
+    MPLogAdEvent([MPLogEvent adShowAttemptForAdapter:NSStringFromClass(self.class)], self.spotID);
     
     NSString *errorString = nil;
     
@@ -165,6 +153,20 @@
     return NO; // we will track it manually;
 }
 
+- (BOOL)isRewardExpected {
+    return NO;
+}
+
+- (BOOL)hasAdAvailable {
+    return self.interstitialUnitController.isReady;
+}
+
+- (void)handleDidPlayAd {
+    if (!self.hasAdAvailable) {
+        [self.delegate fullscreenAdAdapterDidExpire:self];
+    }
+}
+
 #pragma mark - Service
 
 - (void)treatLoadOrShowError:(NSString * _Nullable)reason isLoad:(BOOL)isLoad {
@@ -176,10 +178,11 @@
     NSError *error = [NSError errorWithDomain:kIASDKMopubAdapterErrorDomain code:IASDKMopubAdapterErrorInternal userInfo:userInfo];
     
     if (isLoad) {
-        MPLogAdEvent([MPLogEvent adLoadFailedForAdapter:NSStringFromClass(self.class) error:error], self.mopubAdUnitID);
-        [self.delegate interstitialCustomEvent:self didFailToLoadAdWithError:error];
+        MPLogAdEvent([MPLogEvent adLoadFailedForAdapter:NSStringFromClass(self.class) error:error], self.spotID);
+        [self.delegate fullscreenAdAdapter:self didFailToLoadAdWithError:error];
     } else {
-        MPLogAdEvent([MPLogEvent adShowFailedForAdapter:NSStringFromClass(self.class) error:error], self.mopubAdUnitID);
+        MPLogAdEvent([MPLogEvent adShowFailedForAdapter:NSStringFromClass(self.class) error:error], self.spotID);
+        [self.delegate fullscreenAdAdapter:self didFailToShowAdWithError:error];
     }
 }
 
@@ -190,46 +193,47 @@
 }
 
 - (void)IAAdDidReceiveClick:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adTappedForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-	[self.delegate interstitialCustomEventDidReceiveTapEvent:self];
+    MPLogAdEvent([MPLogEvent adTappedForAdapter:NSStringFromClass(self.class)], self.spotID);
+	[self.delegate fullscreenAdAdapterDidReceiveTap:self];
     if (!self.clickTracked) {
         self.clickTracked = YES;
-        [self.delegate trackClick]; // manual track;
+        [self.delegate fullscreenAdAdapterDidTrackClick:self]; // manual track;
     }
 }
 
 - (void)IAAdWillLogImpression:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adShowSuccessForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-    [self.delegate trackImpression]; // manual track;
+    MPLogAdEvent([MPLogEvent adShowSuccessForAdapter:NSStringFromClass(self.class)], self.spotID);
+    [self.delegate fullscreenAdAdapterDidTrackImpression:self]; // manual track;
 }
 
 - (void)IAUnitControllerWillPresentFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adWillAppearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-	[self.delegate interstitialCustomEventWillAppear:self];
+    MPLogAdEvent([MPLogEvent adWillAppearForAdapter:NSStringFromClass(self.class)], self.spotID);
+	[self.delegate fullscreenAdAdapterAdWillAppear:self];
 }
 
 - (void)IAUnitControllerDidPresentFullscreen:(IAUnitController * _Nullable)unitController {
-	MPLogAdEvent([MPLogEvent adDidAppearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-	[self.delegate interstitialCustomEventDidAppear:self];
+	MPLogAdEvent([MPLogEvent adDidAppearForAdapter:NSStringFromClass(self.class)], self.spotID);
+	[self.delegate fullscreenAdAdapterAdDidAppear:self];
 }
 
 - (void)IAUnitControllerWillDismissFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adWillDisappearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-    [self.delegate interstitialCustomEventWillDisappear:self];
+    MPLogAdEvent([MPLogEvent adWillDisappearForAdapter:NSStringFromClass(self.class)], self.spotID);
+    [self.delegate fullscreenAdAdapterAdWillDisappear:self];
 }
 
 - (void)IAUnitControllerDidDismissFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adDidDisappearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-	[self.delegate interstitialCustomEventDidDisappear:self];
+    MPLogAdEvent([MPLogEvent adDidDisappearForAdapter:NSStringFromClass(self.class)], self.spotID);
+	[self.delegate fullscreenAdAdapterAdDidDisappear:self];
 }
 
 - (void)IAUnitControllerWillOpenExternalApp:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adWillLeaveApplicationForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-	[self.delegate interstitialCustomEventWillLeaveApplication:self];
+    MPLogAdEvent([MPLogEvent adWillLeaveApplicationForAdapter:NSStringFromClass(self.class)], self.spotID);
+	[self.delegate fullscreenAdAdapterWillLeaveApplication:self];
 }
 
 - (void)IAAdDidExpire:(IAUnitController * _Nullable)unitController {
     MPLogInfo(@"<Fyber> IAAdDidExpire");
+    [self.delegate fullscreenAdAdapterDidExpire:self];
 }
 
 #pragma mark - IAMRAIDContentDelegate

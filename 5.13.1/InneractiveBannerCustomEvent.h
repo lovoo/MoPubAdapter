@@ -11,7 +11,7 @@
 #elif __has_include(<MoPubSDKFramework/MoPub.h>)
 #import <MoPubSDKFramework/MoPub.h>
 #else
-#import "MPBannerCustomEvent.h"
+#import "MPInlineAdAdapter.h"
 #endif
 
 /**
@@ -19,6 +19,6 @@
  *
  *  @discussion Use in order to implement mediation with Inneractive Banner Ads.
  */
-@interface InneractiveBannerCustomEvent : MPBannerCustomEvent
+@interface InneractiveBannerCustomEvent : MPInlineAdAdapter <MPThirdPartyInlineAdAdapter>
 
 @end

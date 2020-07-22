@@ -11,7 +11,7 @@
 #elif __has_include(<MoPubSDKFramework/MoPub.h>)
 #import <MoPubSDKFramework/MoPub.h>
 #else
-#import "MPRewardedVideoCustomEvent.h"
+#import "MPFullscreenAdAdapter.h"
 #endif
 
 /**
@@ -19,7 +19,7 @@
  *
  *  @discussion Use in order to implement mediation with Inneractive Rewarded Video Ads.
  */
-@interface InneractiveRewardedVideoCustomEvent : MPRewardedVideoCustomEvent
+@interface InneractiveRewardedVideoCustomEvent : MPFullscreenAdAdapter <MPThirdPartyFullscreenAdAdapter>
 
 @end
 #warning The InneractiveRewardedVideoCustomEvent class will be renamed to the InneractiveRewardedCustomEvent in the 7.6.1 version.

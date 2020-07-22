@@ -11,7 +11,7 @@
 #elif __has_include(<MoPubSDKFramework/MoPub.h>)
 #import <MoPubSDKFramework/MoPub.h>
 #else
-#import "MPInterstitialCustomEvent.h"
+#import "MPFullscreenAdAdapter.h"
 #endif
 
 /**
@@ -19,6 +19,6 @@
  *
  *  @discussion Use in order to implement mediation with Inneractive Interstitial Ads.
  */
-@interface InneractiveInterstitialCustomEvent : MPInterstitialCustomEvent
+@interface InneractiveInterstitialCustomEvent : MPFullscreenAdAdapter <MPThirdPartyFullscreenAdAdapter>
 
 @end

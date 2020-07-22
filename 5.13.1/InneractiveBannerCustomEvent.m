@@ -13,7 +13,6 @@
 #import "MoPub.h"
 #import "MPConstants.h"
 #import "MPLogging.h"
-#import "MPBaseBannerAdapter.h"
 
 #import <IASDKCore/IASDKCore.h>
 #import <IASDKMRAID/IASDKMRAID.h>
@@ -23,7 +22,7 @@
 @property (nonatomic, strong) IAAdSpot *adSpot;
 @property (nonatomic, strong) IAViewUnitController *bannerUnitController;
 @property (nonatomic, strong) IAMRAIDContentController *MRAIDContentController;
-@property (nonatomic, strong) NSString *mopubAdUnitID;
+@property (nonatomic, strong) NSString *spotID;
 @property (nonatomic, strong) MPAdView *moPubAdView;
 
 @property (nonatomic) BOOL isIABanner;
@@ -33,8 +32,13 @@
 
 @implementation InneractiveBannerCustomEvent {}
 
+@dynamic delegate;
+@dynamic localExtras;
+
+#pragma mark -
+
 /**
- *  @brief Is called each time the MoPub SDK requests a new banner ad. MoPub < 5.10.
+ *  @brief Is called each time the MoPub SDK requests a new banner ad. MoPub >= 5.13.
  *
  *  @discussion Also, when this method is invoked, this class is a new instance, it is not reused,
  * which makes call of this method only once per it's instance lifetime.
@@ -42,17 +46,8 @@
  *  @param size Ad size.
  *  @param info An Info dictionary is a JSON object that is defined in the MoPub console.
  */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-implementations"
-- (void)requestAdWithSize:(CGSize)size customEventInfo:(NSDictionary *)info {
-    [self requestAdWithSize:size customEventInfo:info adMarkup:nil];
-}
-#pragma GCC diagnostic pop
 
-/**
- *  @brief MoPub 5.10+.
- */
-- (void)requestAdWithSize:(CGSize)size customEventInfo:(NSDictionary *)info adMarkup:(NSString *)adMarkup {
+- (void)requestAdWithSize:(CGSize)size adapterInfo:(NSDictionary *)info adMarkup:(NSString *)adMarkup {
     _isIABanner =
     ((size.width == kIADefaultIPhoneBannerWidth) && (size.height == kIADefaultIPhoneBannerHeight)) ||
     ((size.width == kIADefaultIPadBannerWidth) && (size.height == kIADefaultIPadBannerHeight));
@@ -79,21 +74,14 @@
         builder.zipCode = @"90210";
          */
     }];
-	
-    MPBaseBannerAdapter *baseBannerAdapter = (MPBaseBannerAdapter *)self.delegate;
-    MPAdView *mopubAdView = baseBannerAdapter.delegate.banner;
     
-    self.mopubAdUnitID = mopubAdView.adUnitId;
+    self.spotID = spotID;
 	IAAdRequest *request = [IAAdRequest build:^(id<IAAdRequestBuilder>  _Nonnull builder) {
         builder.spotID = spotID;
 		builder.timeout = BANNER_TIMEOUT_INTERVAL - 1;
 		builder.userData = userData;
-        builder.keywords = mopubAdView.keywords;
+        builder.keywords = self.localExtras[@"keywords"];
 	}];
-    // the `location` property of the `MPBannerCustomEventDelegate` is deprecated starting from the `MoPub 5.12.0
-    if ([self.delegate respondsToSelector:@selector(location)]) {
-        request.location = [self.delegate performSelector:@selector(location)];
-    }
 
 	self.MRAIDContentController = [IAMRAIDContentController build:^(id<IAMRAIDContentControllerBuilder>  _Nonnull builder) {
 		builder.MRAIDContentDelegate = self;
@@ -110,7 +98,7 @@
 		[builder addSupportedUnitController:self.bannerUnitController];
 		builder.mediationType = [IAMediationMopub new];
 	}];
-	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.mopubAdUnitID);
+	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.spotID);
     self.clickTracked = NO;
     
     if (IASDKCore.sharedInstance.isInitialised) {
@@ -121,14 +109,14 @@
                 [weakSelf treatError:error.localizedDescription];
             } else {
                 if (adSpot.activeUnitController == weakSelf.bannerUnitController) {
-                    if (weakSelf.delegate.viewControllerForPresentingModalView.presentedViewController != nil) {
+                    if ([weakSelf.delegate inlineAdAdapterViewControllerForPresentingModalView:weakSelf].presentedViewController != nil) {
                         [weakSelf treatError:@"view hierarchy inconsistency"];
                     } else {
-                        [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
-                        [MPLogging logEvent:[MPLogEvent adShowAttemptForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
-                        [MPLogging logEvent:[MPLogEvent adWillAppearForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.mopubAdUnitID fromClass:weakSelf.class];
+                        [MPLogging logEvent:[MPLogEvent adLoadSuccessForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.spotID fromClass:weakSelf.class];
+                        [MPLogging logEvent:[MPLogEvent adShowAttemptForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.spotID fromClass:weakSelf.class];
+                        [MPLogging logEvent:[MPLogEvent adWillAppearForAdapter:NSStringFromClass(weakSelf.class)] source:weakSelf.spotID fromClass:weakSelf.class];
                         weakSelf.bannerUnitController.adView.bounds = CGRectMake(0, 0, size.width, size.height);
-                        [weakSelf.delegate bannerCustomEvent:weakSelf didLoadAd:weakSelf.bannerUnitController.adView];
+                        [weakSelf.delegate inlineAdAdapter:weakSelf didLoadAdWithAdView:weakSelf.bannerUnitController.adView];
                     }
                 } else {
                     [weakSelf treatError:@"mismatched ad object entities"];
@@ -139,6 +127,7 @@
         [self treatError:@"<Fyber> SDK is not initialised;"];
     }
 }
+
 
 /**
  *  @discussion This method is called only once per instance lifecycle.
@@ -179,33 +168,33 @@
     NSDictionary *userInfo = @{NSLocalizedFailureReasonErrorKey : reason};
     NSError *error = [NSError errorWithDomain:kIASDKMopubAdapterErrorDomain code:IASDKMopubAdapterErrorInternal userInfo:userInfo];
     
-    MPLogAdEvent([MPLogEvent adLoadFailedForAdapter:NSStringFromClass(self.class) error:error], self.mopubAdUnitID);
-    [self.delegate bannerCustomEvent:self didFailToLoadAdWithError:error];
+    MPLogAdEvent([MPLogEvent adLoadFailedForAdapter:NSStringFromClass(self.class) error:error], self.spotID);
+    [self.delegate inlineAdAdapter:self didFailToLoadAdWithError:error];
 }
 
 #pragma mark - IAViewUnitControllerDelegate
 
 - (UIViewController * _Nonnull)IAParentViewControllerForUnitController:(IAUnitController * _Nullable)unitController {
-    return self.delegate.viewControllerForPresentingModalView;
+    return [self.delegate inlineAdAdapterViewControllerForPresentingModalView:self];
 }
 
 - (void)IAAdDidReceiveClick:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adTappedForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
+    MPLogAdEvent([MPLogEvent adTappedForAdapter:NSStringFromClass(self.class)], self.spotID);
     if (!self.clickTracked) {
         self.clickTracked = YES;
-        [self.delegate trackClick]; // manual track;
+        [self.delegate inlineAdAdapterDidTrackClick:self]; // manual track;
     }
 }
 
 - (void)IAAdWillLogImpression:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adDidAppearForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-    MPLogAdEvent([MPLogEvent adShowSuccessForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-    [self.delegate trackImpression]; // manual track;
+    MPLogAdEvent([MPLogEvent adDidAppearForAdapter:NSStringFromClass(self.class)], self.spotID);
+    MPLogAdEvent([MPLogEvent adShowSuccessForAdapter:NSStringFromClass(self.class)], self.spotID);
+    [self.delegate inlineAdAdapterDidTrackImpression:self]; // manual track;
 }
 
 - (void)IAUnitControllerWillPresentFullscreen:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adWillPresentModalForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-    [self.delegate bannerCustomEventWillBeginAction:self];
+    MPLogAdEvent([MPLogEvent adWillPresentModalForAdapter:NSStringFromClass(self.class)], self.spotID);
+    [self.delegate inlineAdAdapterWillBeginUserAction:self];
 }
 
 - (void)IAUnitControllerDidPresentFullscreen:(IAUnitController * _Nullable)unitController {
@@ -230,13 +219,13 @@
 - (void)IAUnitControllerDidDismissFullscreen:(IAUnitController * _Nullable)unitController {
     [self.moPubAdView startAutomaticallyRefreshingContents];
     
-    MPLogAdEvent([MPLogEvent adDidDismissModalForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-    [self.delegate bannerCustomEventDidFinishAction:self];
+    MPLogAdEvent([MPLogEvent adDidDismissModalForAdapter:NSStringFromClass(self.class)], self.spotID);
+    [self.delegate inlineAdAdapterDidEndUserAction:self];
 }
 
 - (void)IAUnitControllerWillOpenExternalApp:(IAUnitController * _Nullable)unitController {
-    MPLogAdEvent([MPLogEvent adWillLeaveApplicationForAdapter:NSStringFromClass(self.class)], self.mopubAdUnitID);
-    [self.delegate bannerCustomEventWillLeaveApplication:self];
+    MPLogAdEvent([MPLogEvent adWillLeaveApplicationForAdapter:NSStringFromClass(self.class)], self.spotID);
+    [self.delegate inlineAdAdapterWillLeaveApplication:self];
 }
 
 #pragma mark - IAMRAIDContentDelegate
@@ -254,8 +243,8 @@
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundeclared-selector"
-    if ([self.delegate respondsToSelector:@selector(bannerCustomEventWillExpandAd:)]) {
-        [self.delegate performSelector:@selector(bannerCustomEventWillExpandAd:) withObject:self];
+    if ([self.delegate respondsToSelector:@selector(inlineAdAdapterWillExpand:)]) {
+        [self.delegate performSelector:@selector(inlineAdAdapterWillExpand:) withObject:self];
     }
 #pragma clang diagnostic pop
 }
@@ -273,8 +262,8 @@
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundeclared-selector"
-    if ([self.delegate respondsToSelector:@selector(bannerCustomEventDidCollapseAd:)]) {
-        [self.delegate performSelector:@selector(bannerCustomEventDidCollapseAd:) withObject:self];
+    if ([self.delegate respondsToSelector:@selector(inlineAdAdapterDidCollapse:)]) {
+        [self.delegate performSelector:@selector(inlineAdAdapterDidCollapse:) withObject:self];
     }
 #pragma clang diagnostic pop
 }
@@ -282,8 +271,8 @@
 #pragma mark - Memory management
 
 - (void)dealloc {
-    MPLogAdEvent([MPLogEvent adWillDisappearForAdapter:NSStringFromClass(self.class)], _mopubAdUnitID);
-    MPLogAdEvent([MPLogEvent adDidDisappearForAdapter:NSStringFromClass(self.class)], _mopubAdUnitID);
+    MPLogAdEvent([MPLogEvent adWillDisappearForAdapter:NSStringFromClass(self.class)], _spotID);
+    MPLogAdEvent([MPLogEvent adDidDisappearForAdapter:NSStringFromClass(self.class)], _spotID);
     MPLogDebug(@"%@ deallocated", NSStringFromClass(self.class));
 }
 

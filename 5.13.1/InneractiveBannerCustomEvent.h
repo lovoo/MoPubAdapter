@@ -11,7 +11,7 @@
 #elif __has_include(<MoPubSDKFramework/MoPub.h>)
 #import <MoPubSDKFramework/MoPub.h>
 #else
-#import "MPInlineAdAdapter.h"
+#import <MoPub.h>
 #endif
 
 /**

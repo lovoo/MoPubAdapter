@@ -11,9 +11,6 @@
 #import "IASDKMopubAdapterConfiguration.h"
 #import "IASDKMopubAdapterData.h"
 
-#import "MPLogging.h"
-#import "MPRewardedVideoReward.h"
-
 #import <IASDKCore/IASDKCore.h>
 #import <IASDKMRAID/IASDKMRAID.h>
 #import <IASDKVideo/IASDKVideo.h>

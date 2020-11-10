@@ -10,10 +10,6 @@
 
 #import "IASDKMopubAdapterConfiguration.h"
 
-#import "MoPub.h"
-#import "MPConstants.h"
-#import "MPLogging.h"
-
 #import <IASDKCore/IASDKCore.h>
 #import <IASDKMRAID/IASDKMRAID.h>
 

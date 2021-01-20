@@ -17,6 +17,7 @@
 NSString * const kIASDKMopubAdapterAppIDKey = @"appID";
 NSString * const kIASDKMopubAdapterErrorDomain = @"com.mopub.IASDKAdapter";
 NSString * const kIASDKShouldUseMopubGDPRConsentKey = @"IASDKShouldUseMopubGDPRConsentKey";
+NSNotificationName _Nonnull kIASDKInitCompleteNotification = @"kIASDKInitCompleteNotification";
 
 #pragma mark - Static members
 
@@ -71,6 +72,7 @@ static dispatch_queue_t sIASDKInitSyncQueue = nil;
             [IASDKCore.sharedInstance initWithAppID:appID completionBlock:^(BOOL success, NSError * _Nullable error) {
                 if (success || (error.code == IASDKCoreInitErrorTypeFailedToDownloadMandatoryData)) {
                     error = nil;
+                    [NSNotificationCenter.defaultCenter postNotificationName:kIASDKInitCompleteNotification object:self];
                 }
                 
                 if (complete) {
@@ -101,7 +103,9 @@ static dispatch_queue_t sIASDKInitSyncQueue = nil;
     
     dispatch_async(sIASDKInitSyncQueue, ^{
         if (receivedAppID && [receivedAppID isKindOfClass:NSString.class] && receivedAppID.length && ![receivedAppID isEqualToString:IASDKCore.sharedInstance.appID]) {
-            [IASDKCore.sharedInstance initWithAppID:receivedAppID];
+            [IASDKCore.sharedInstance initWithAppID:receivedAppID completionBlock:^(BOOL success, NSError * _Nullable error) {
+                [NSNotificationCenter.defaultCenter postNotificationName:kIASDKInitCompleteNotification object:self];
+            } completionQueue:nil];
         }
     });
 }

@@ -20,6 +20,7 @@
 @property (nonatomic, strong) IAMRAIDContentController *MRAIDContentController;
 @property (nonatomic, strong) NSString *spotID;
 @property (nonatomic, strong) MPAdView *moPubAdView;
+@property (nonatomic, copy) void (^fetchAdBlock)(void);
 
 @property (nonatomic) BOOL isIABanner;
 @property (atomic) BOOL clickTracked;
@@ -97,10 +98,10 @@
 	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.spotID);
     self.clickTracked = NO;
     
-    if (IASDKCore.sharedInstance.isInitialised) {
-        __weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
-
-        [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
+    __weak __typeof__(self) weakSelf = self;
+    
+    self.fetchAdBlock = ^void() {
+        [weakSelf.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
             if (error) {
                 [weakSelf treatError:error.localizedDescription];
             } else {
@@ -119,8 +120,22 @@
                 }
             }
         }];
+    };
+    if (IASDKCore.sharedInstance.isInitialised) {
+        [self performAdFetch:nil];
     } else {
-        [self treatError:@"<Fyber> SDK is not initialised;"];
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(performAdFetch:) name:kIASDKInitCompleteNotification object:nil];
+    }
+}
+
+- (void)performAdFetch:(NSNotification *)notification {
+    if (self.fetchAdBlock) {
+        void (^fetchAdBlock)(void) = self.fetchAdBlock;
+        
+        self.fetchAdBlock = nil;
+        fetchAdBlock();
+        
+        [NSNotificationCenter.defaultCenter removeObserver:self name:kIASDKInitCompleteNotification object:self];
     }
 }
 
@@ -267,6 +282,7 @@
 #pragma mark - Memory management
 
 - (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
     MPLogAdEvent([MPLogEvent adWillDisappearForAdapter:NSStringFromClass(self.class)], _spotID);
     MPLogAdEvent([MPLogEvent adDidDisappearForAdapter:NSStringFromClass(self.class)], _spotID);
     MPLogDebug(@"%@ deallocated", NSStringFromClass(self.class));

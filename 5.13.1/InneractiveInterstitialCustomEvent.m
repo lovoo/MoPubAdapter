@@ -22,6 +22,7 @@
 @property (nonatomic, strong) IAVideoContentController *videoContentController;
 @property (nonatomic, strong) NSString *spotID;
 @property (nonatomic) BOOL clickTracked;
+@property (nonatomic, copy) void (^fetchAdBlock)(void);
 
 /**
  *  @brief The view controller, that presents the Inneractive Interstitial Ad.
@@ -99,10 +100,10 @@
 	}];
 	MPLogAdEvent([MPLogEvent adLoadAttemptForAdapter:NSStringFromClass(self.class) dspCreativeId:nil dspName:nil], self.spotID);
     
-    if (IASDKCore.sharedInstance.isInitialised) {
-        __weak __typeof__(self) weakSelf = self; // a weak reference to 'self' should be used in the next block:
-        
-        [self.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
+    __weak __typeof__(self) weakSelf = self;
+    
+    self.fetchAdBlock = ^void() {
+        [weakSelf.adSpot fetchAdWithCompletion:^(IAAdSpot * _Nullable adSpot, IAAdModel * _Nullable adModel, NSError * _Nullable error) {
             if (error) {
                 [weakSelf treatLoadOrShowError:error.localizedDescription isLoad:YES];
             } else {
@@ -114,8 +115,22 @@
                 }
             }
         }];
+    };
+    if (IASDKCore.sharedInstance.isInitialised) {
+        [self performAdFetch:nil];
     } else {
-        [self treatLoadOrShowError:@"<Fyber> SDK is not initialised;" isLoad:YES];
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(performAdFetch:) name:kIASDKInitCompleteNotification object:nil];
+    }
+}
+
+- (void)performAdFetch:(NSNotification *)notification {
+    if (self.fetchAdBlock) {
+        void (^fetchAdBlock)(void) = self.fetchAdBlock;
+        
+        self.fetchAdBlock = nil;
+        fetchAdBlock();
+        
+        [NSNotificationCenter.defaultCenter removeObserver:self name:kIASDKInitCompleteNotification object:self];
     }
 }
 
@@ -221,6 +236,14 @@
 - (void)IAUnitControllerDidDismissFullscreen:(IAUnitController * _Nullable)unitController {
     MPLogAdEvent([MPLogEvent adDidDisappearForAdapter:NSStringFromClass(self.class)], self.spotID);
 	[self.delegate fullscreenAdAdapterAdDidDisappear:self];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
+    // Signal that the fullscreen ad is closing and the state should be reset.
+    // `fullscreenAdAdapterAdDidDismiss:` was introduced in MoPub SDK 5.15.0.
+    if ([self.delegate respondsToSelector:@selector(fullscreenAdAdapterAdDidDismiss:)]) {
+        [self.delegate performSelector:@selector(fullscreenAdAdapterAdDidDismiss:) withObject:self];
+    }
+#pragma clang diagnostic pop
 }
 
 - (void)IAUnitControllerWillOpenExternalApp:(IAUnitController * _Nullable)unitController {
@@ -261,6 +284,7 @@
 #pragma mark - Memory management
 
 - (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
     MPLogDebug(@"%@ deallocated", NSStringFromClass(self.class));
 }
 

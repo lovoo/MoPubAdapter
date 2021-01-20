@@ -10,8 +10,8 @@
 
 #if __has_include(<MoPub/MoPub.h>)
 #import <MoPub/MoPub.h>
-#elif __has_include(<MoPubSDKFramework/MoPub.h>)
-#import <MoPubSDKFramework/MoPub.h>
+#elif __has_include(<MoPubSDK/MoPub.h>)
+#import <MoPubSDK/MoPub.h>
 #else
 #import <MoPub.h>
 #endif
@@ -27,6 +27,8 @@ typedef NS_ENUM(NSInteger, IASDKMopubAdapterError) {
 
 extern NSString * const kIASDKMopubAdapterAppIDKey;
 extern NSString * const kIASDKMopubAdapterErrorDomain;
+
+extern NSNotificationName _Nonnull kIASDKInitCompleteNotification;
 
 /**
  *  @brief The Inneractive Adapter Configuration class.

@@ -118,7 +118,6 @@ static dispatch_queue_t sIASDKInitSyncQueue = nil;
     if (shouldUseMopubGDPRConsent && (MoPub.sharedInstance.isGDPRApplicable == MPBoolYes)) {
         if (MoPub.sharedInstance.allowLegitimateInterest) {
             if ((MoPub.sharedInstance.currentConsentStatus == MPConsentStatusDenied) ||
-                (MoPub.sharedInstance.currentConsentStatus == MPConsentStatusDoNotTrack) ||
                 (MoPub.sharedInstance.currentConsentStatus == MPConsentStatusPotentialWhitelist)) {
                 IASDKCore.sharedInstance.GDPRConsent = IAGDPRConsentTypeDenied;
             } else {

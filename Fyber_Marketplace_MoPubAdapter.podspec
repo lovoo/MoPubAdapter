@@ -14,5 +14,5 @@ The adapter that makes possible showing the Fyber ads on top of the MoPub ads.
   s.ios.source_files = '5.15/*.{h,m}'
   s.static_framework = true
   s.dependency         'Fyber_Marketplace_SDK', s.version.to_s
-  s.dependency         'mopub-ios-sdk', '>= 5.13.1'
+  s.dependency         'mopub-ios-sdk/Core', '>= 5.13.1'
 end

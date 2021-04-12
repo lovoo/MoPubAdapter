@@ -36,7 +36,13 @@ static dispatch_queue_t sIASDKInitSyncQueue = nil;
 #pragma mark - MPAdapterConfiguration
 
 - (NSString *)adapterVersion {
-    return IASDKCore.sharedInstance.version;
+    NSString *version = @"";
+    
+    if (IASDKCore.sharedInstance.version) {
+        version = [NSString stringWithFormat:@"%@.0", IASDKCore.sharedInstance.version];
+    }
+    
+    return version;
 }
 
 /**
@@ -49,7 +55,7 @@ static dispatch_queue_t sIASDKInitSyncQueue = nil;
 }
 
 - (NSString *)moPubNetworkName {
-#warning This should match your Mopub Dashboard settings;
+    // This should match your Mopub Dashboard settings;
     return @"inneractive";
 }
 

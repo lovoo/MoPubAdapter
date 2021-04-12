@@ -22,5 +22,4 @@
 @interface InneractiveRewardedVideoCustomEvent : MPFullscreenAdAdapter <MPThirdPartyFullscreenAdAdapter>
 
 @end
-#warning The InneractiveRewardedVideoCustomEvent class will be renamed to the InneractiveRewardedCustomEvent in the 7.6.1 version.
 typedef InneractiveRewardedVideoCustomEvent InneractiveRewardedCustomEvent;

@@ -49,7 +49,7 @@
     ((size.width == kIADefaultIPhoneBannerWidth) && (size.height == kIADefaultIPhoneBannerHeight)) ||
     ((size.width == kIADefaultIPadBannerWidth) && (size.height == kIADefaultIPadBannerHeight));
     
-#warning Set your spotID or define it @MoPub console inside the "extra" JSON:
+    // Set your spotID or define it @MoPub console inside the "extra" JSON:
     NSString *spotID = @"";
     
     if (info && [info isKindOfClass:NSDictionary.class] && info.count) {
@@ -64,7 +64,6 @@
     [IASDKMopubAdapterConfiguration collectConsentStatusFromMopub];
     
     IAUserData *userData = [IAUserData build:^(id<IAUserDataBuilder>  _Nonnull builder) {
-#warning Set up targeting in order to increase revenue:
         /*
         builder.age = 34;
         builder.gender = IAUserGenderTypeMale;
@@ -210,17 +209,6 @@
 
 - (void)IAUnitControllerDidPresentFullscreen:(IAUnitController * _Nullable)unitController {
     MPLogInfo(@"<Fyber> ad did present fullscreen;");
-    UIView *view = self.bannerUnitController.adView;
-    
-    while (view.superview) {
-        if ([view.superview isKindOfClass:MPAdView.class]) {
-            self.moPubAdView = (MPAdView *)view.superview;
-            [self.moPubAdView stopAutomaticallyRefreshingContents];
-            break;
-        } else {
-            view = view.superview;
-        }
-    }
 }
 
 - (void)IAUnitControllerWillDismissFullscreen:(IAUnitController * _Nullable)unitController {
@@ -228,8 +216,6 @@
 }
 
 - (void)IAUnitControllerDidDismissFullscreen:(IAUnitController * _Nullable)unitController {
-    [self.moPubAdView startAutomaticallyRefreshingContents];
-    
     MPLogAdEvent([MPLogEvent adDidDismissModalForAdapter:NSStringFromClass(self.class)], self.spotID);
     [self.delegate inlineAdAdapterDidEndUserAction:self];
 }
